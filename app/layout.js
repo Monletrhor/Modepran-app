@@ -1,14 +1,12 @@
 export const metadata = {
-  title: "Modepran App",
-  description: "Control de limpieza y cloración",
+  title: "Control sanitario Modepran",
+  description: "Limpieza y cloración de depósitos",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="es">
-      <body style={{ margin: 0, fontFamily: "Arial, sans-serif", background: "#111", color: "#fff" }}>
-        {children}
-      </body>
+      <body style={{ margin: 0 }}>{children}</body>
     </html>
   );
 }
