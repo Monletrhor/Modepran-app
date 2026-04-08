@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -8,32 +8,20 @@ const supabase = createClient(
 );
 
 const trabajadores = [
-  "Maria penades",
-  "Joana todo",
-  "Martina simova",
-  "Mireia soro",
-  "Elena Palau",
-  "Katya urias",
-  "Kenia urias",
-  "David Valls",
-  "Johana tavera",
-  "Xujey Suarez",
-  "Rafa Sales",
-  "Jenny Martinez",
-  "Trini"
+  "Maria penades","Joana todo","Martina simova","Mireia soro","Elena Palau",
+  "Katya urias","Kenia urias","David Valls","Johana tavera","Xujey Suarez",
+  "Rafa Sales","Jenny Martinez","Trini"
 ];
-
 const zonasPerros = {
   "Zona principal": ["INVERNADERO", "RESIDENCIA", "FASE 1", "FASE 2", "FASE 3"],
   "Campo Nuevo": ["FASE 4", "FASE 5", "FASE 6", "FASE 7"],
 };
-
 const zonasGatos = {
   "Cuarentenas": ["Cuarentena 1", "Cuarentena 2"],
   "Jaulones": ["Jaulón 1", "Jaulón 2", "Jaulón 3", "Jaulón 4", "Jaulón 5", "Jaulón 6"],
 };
-
 const depositos = Array.from({ length: 12 }, (_, i) => `Depósito ${i + 1}`);
+const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 function ahora() {
   const d = new Date();
@@ -43,34 +31,21 @@ function ahora() {
     timestamp: d.toISOString(),
   };
 }
-
-function getStartOfWeek(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
+function dateInputValue(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
-
-function getEndOfWeek(date) {
-  const start = getStartOfWeek(date);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  end.setHours(23, 59, 59, 999);
-  return end;
+function esFromInput(isoDate) {
+  const d = new Date(isoDate + "T12:00:00");
+  return d.toLocaleDateString("es-ES");
 }
-
 function escapeHtml(text) {
-  return String(text ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+  return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
-
 function abrirVentanaImpresion(titulo, contenido) {
-  const win = window.open("", "_blank", "width=1000,height=800");
+  const win = window.open("", "_blank", "width=1100,height=850");
   if (!win) return;
   win.document.write(`
     <html>
@@ -91,98 +66,128 @@ function abrirVentanaImpresion(titulo, contenido) {
   `);
   win.document.close();
   win.focus();
-  setTimeout(() => win.print(), 400);
+  setTimeout(() => win.print(), 250);
 }
-
 function EstadoBadge({ hecho, alerta = false }) {
   const style = {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 700,
-    letterSpacing: ".01em",
+    display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "7px 12px",
+    borderRadius: 999, fontSize: 12, fontWeight: 800,
     background: hecho ? "#10b981" : alerta ? "#dc2626" : "#fbbf24",
-    color: hecho || alerta ? "#fff" : "#111",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.12)"
+    color: hecho || alerta ? "#fff" : "#111", boxShadow: "0 4px 12px rgba(0,0,0,0.12)"
   };
   return <span style={style}>{hecho ? "✔ Hecho" : alerta ? "⚠ Crítico" : "Pendiente"}</span>;
 }
-
 function Card({ children, style = {} }) {
+  return <div style={{ borderRadius: 24, background: "#f8f8f8", boxShadow: "0 14px 40px rgba(0,0,0,0.18)", overflow: "hidden", ...style }}>{children}</div>;
+}
+function SectionTitle({ children }) {
+  return <h2 style={{ margin: "0 0 18px", color: "#e84d57", fontSize: 28, lineHeight: 1.1, fontWeight: 800 }}>{children}</h2>;
+}
+const inputStyle = { width: "100%", padding: "14px 16px", borderRadius: 16, border: "1px solid #ddd", background: "#fff", fontSize: 16, outline: "none" };
+
+function MonthYearPicker({ mes, setMes, anio, setAnio }) {
+  const years = [];
+  const actual = new Date().getFullYear();
+  for (let y = actual - 3; y <= actual + 2; y++) years.push(y);
   return (
-    <div style={{
-      borderRadius: 26,
-      background: "#f8f8f8",
-      boxShadow: "0 14px 40px rgba(0,0,0,0.18)",
-      overflow: "hidden",
-      ...style
-    }}>
-      {children}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
+      <select value={mes} onChange={(e) => setMes(Number(e.target.value))} style={inputStyle}>
+        {meses.map((m, i) => <option key={m} value={i}>{m}</option>)}
+      </select>
+      <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} style={inputStyle}>
+        {years.map((y) => <option key={y} value={y}>{y}</option>)}
+      </select>
     </div>
   );
 }
 
-function SectionTitle({ children }) {
-  return <h2 style={{ margin: "0 0 18px", color: "#e84d57", fontSize: 34, lineHeight: 1.1, fontWeight: 800 }}>{children}</h2>;
+function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = false, retroInfo = false }) {
+  return (
+    <div style={{ border: "1px solid #ececec", borderRadius: 20, padding: 16, background: registro ? "#ecfdf5" : "#fff" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 800, fontSize: 18, color: "#1f1f1f" }}>{title}</span>
+        <EstadoBadge hecho={!!registro} />
+      </div>
+      <select disabled={disabled} defaultValue="" onChange={(e) => e.target.value && onSelect(e.target.value)} style={{ ...inputStyle, opacity: disabled ? .65 : 1 }}>
+        <option value="">{bloqueado ? "Ya registrado hoy" : "Seleccionar trabajador"}</option>
+        {!disabled && trabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      {registro && (
+        <div style={{ marginTop: 10, fontSize: 14, color: "#555", lineHeight: 1.6 }}>
+          <div><strong>Trabajador:</strong> {registro.trabajador}</div>
+          <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
+          <div><strong>Hora:</strong> {registro.hora}</div>
+          {(retroInfo || registro.retroactivo) && <div style={{ color: "#b45309", fontWeight: 700 }}>Registro retroactivo</div>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Page() {
-  const [limpieza, setLimpieza] = useState({});
-  const [cloracion, setCloracion] = useState({});
+  const today = new Date();
+  const [tab, setTab] = useState("perros");
+  const [historicoTab, setHistoricoTab] = useState("perros");
+  const [isMobile, setIsMobile] = useState(false);
+  const [estadoConexion, setEstadoConexion] = useState("Conectando con Supabase...");
   const [infecciososGatos, setInfecciososGatos] = useState(false);
   const [infecciososPerros, setInfecciososPerros] = useState(false);
-  const [estadoConexion, setEstadoConexion] = useState("Conectando con Supabase...");
-  const [tab, setTab] = useState("perros");
+  const [mesHist, setMesHist] = useState(today.getMonth());
+  const [anioHist, setAnioHist] = useState(today.getFullYear());
+  const [fechaRetro, setFechaRetro] = useState(dateInputValue(today));
+  const [limpiezaHoy, setLimpiezaHoy] = useState({});
+  const [cloracionHoy, setCloracionHoy] = useState({});
+  const [histPerros, setHistPerros] = useState([]);
+  const [histGatos, setHistGatos] = useState([]);
+  const [histCloro, setHistCloro] = useState([]);
 
   useEffect(() => {
-    const cargarDatos = async () => {
-      try {
-        const { data: limpias, error: e1 } = await supabase.from("registros_limpieza").select("*").order("created_at", { ascending: false });
-        const { data: cloros, error: e2 } = await supabase.from("registros_cloracion").select("*").order("created_at", { ascending: false });
-        if (e1) throw e1;
-        if (e2) throw e2;
-
-        const limpiezaMap = {};
-        (limpias || []).forEach((item) => {
-          if (!limpiezaMap[item.zona]) {
-            limpiezaMap[item.zona] = {
-              trabajador: item.trabajador,
-              fecha: item.fecha,
-              hora: item.hora,
-              timestamp: item.created_at,
-            };
-          }
-        });
-
-        const cloracionMap = {};
-        (cloros || []).forEach((item) => {
-          if (!cloracionMap[item.deposito]) {
-            cloracionMap[item.deposito] = {
-              trabajador: item.trabajador,
-              fecha: item.fecha,
-              hora: item.hora,
-              timestamp: item.created_at,
-            };
-          }
-        });
-
-        setLimpieza(limpiezaMap);
-        setCloracion(cloracionMap);
-        setEstadoConexion("Supabase conectado");
-      } catch (error) {
-        console.error(error);
-        setEstadoConexion("No se pudo conectar con Supabase");
-      }
-    };
-    cargarDatos();
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const registrar = async (zona, trabajador) => {
+  async function cargarTodo() {
+    try {
+      const { data: limpias, error: e1 } = await supabase.from("registros_limpieza").select("*").order("created_at", { ascending: false });
+      const { data: cloros, error: e2 } = await supabase.from("registros_cloracion").select("*").order("created_at", { ascending: false });
+      if (e1) throw e1;
+      if (e2) throw e2;
+
+      const hoyEs = new Date().toLocaleDateString("es-ES");
+      const mapHoyL = {};
+      const mapHoyC = {};
+      (limpias || []).forEach((item) => {
+        if (item.fecha === hoyEs && !mapHoyL[item.zona]) {
+          mapHoyL[item.zona] = { trabajador: item.trabajador, fecha: item.fecha, hora: item.hora, retroactivo: !!item.retroactivo, created_at: item.created_at };
+        }
+      });
+      (cloros || []).forEach((item) => {
+        if (item.fecha === hoyEs && !mapHoyC[item.deposito]) {
+          mapHoyC[item.deposito] = { trabajador: item.trabajador, fecha: item.fecha, hora: item.hora, retroactivo: !!item.retroactivo, created_at: item.created_at };
+        }
+      });
+
+      setLimpiezaHoy(mapHoyL);
+      setCloracionHoy(mapHoyC);
+      setHistPerros((limpias || []).filter(x => x.categoria === "perros"));
+      setHistGatos((limpias || []).filter(x => x.categoria === "gatos"));
+      setHistCloro(cloros || []);
+      setEstadoConexion("Supabase conectado");
+    } catch (error) {
+      console.error(error);
+      setEstadoConexion("No se pudo conectar con Supabase");
+    }
+  }
+  useEffect(() => { cargarTodo(); }, []);
+
+  async function registrar(zona, trabajador, fechaTrabajo=null) {
+    if (!trabajador) return;
     const tiempo = ahora();
+    const fechaElegida = fechaTrabajo || tiempo.fecha;
     let categoria = "perros";
     let grupo = "Zona principal";
-
     if (Object.values(zonasGatos).flat().includes(zona) || zona === "Infecciosos Gatos") {
       categoria = "gatos";
       if (zona.startsWith("Cuarentena")) grupo = "Cuarentenas";
@@ -192,338 +197,217 @@ export default function Page() {
       if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
       if (zona === "Infecciosos Perros") grupo = "Infecciosos";
     }
+    const retroactivo = fechaElegida !== tiempo.fecha;
+    const { error } = await supabase.from("registros_limpieza").insert([{ categoria, grupo, zona, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
+    if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
+    await cargarTodo();
+  }
 
-    setLimpieza((prev) => ({ ...prev, [zona]: { trabajador, ...tiempo } }));
-
-    const { error } = await supabase.from("registros_limpieza").insert([{
-      categoria, grupo, zona, trabajador, fecha: tiempo.fecha, hora: tiempo.hora,
-    }]);
-
-    if (error) {
-      console.error(error);
-      alert("No se ha podido guardar en Supabase");
-    }
-  };
-
-  const registrarCloro = async (deposito, trabajador) => {
+  async function registrarCloro(deposito, trabajador, fechaTrabajo=null) {
+    if (!trabajador) return;
     const tiempo = ahora();
-    setCloracion((prev) => ({ ...prev, [deposito]: { trabajador, ...tiempo } }));
-    const { error } = await supabase.from("registros_cloracion").insert([{
-      deposito, trabajador, fecha: tiempo.fecha, hora: tiempo.hora,
-    }]);
-    if (error) {
-      console.error(error);
-      alert("No se ha podido guardar en Supabase");
-    }
-  };
+    const fechaElegida = fechaTrabajo || tiempo.fecha;
+    const retroactivo = fechaElegida !== tiempo.fecha;
+    const { error } = await supabase.from("registros_cloracion").insert([{ deposito, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
+    if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
+    await cargarTodo();
+  }
 
-  const exportarLimpiezaSemanal = () => {
-    const hoy = new Date();
-    const inicio = getStartOfWeek(hoy);
-    const fin = getEndOfWeek(hoy);
+  const totalPendientes = useMemo(() => {
+    const perros = Object.values(zonasPerros).flat().filter((z) => !limpiezaHoy[z]).length;
+    const gatos = Object.values(zonasGatos).flat().filter((z) => !limpiezaHoy[z]).length;
+    const deps = depositos.filter((d) => !cloracionHoy[d]).length;
+    return perros + gatos + deps + (infecciososPerros && !limpiezaHoy["Infecciosos Perros"] ? 1 : 0) + (infecciososGatos && !limpiezaHoy["Infecciosos Gatos"] ? 1 : 0);
+  }, [limpiezaHoy, cloracionHoy, infecciososPerros, infecciososGatos]);
 
-    const filas = Object.entries(limpieza)
-      .filter(([, data]) => {
-        const fecha = new Date(data.timestamp || hoy.toISOString());
-        return fecha >= inicio && fecha <= fin;
-      })
-      .sort((a, b) => new Date(a[1].timestamp || hoy.toISOString()) - new Date(b[1].timestamp || hoy.toISOString()));
+  function filtrarMes(list) {
+    return list.filter((r) => {
+      const [_, m, y] = r.fecha.split("/");
+      return Number(m) - 1 === mesHist && Number(y) === anioHist;
+    }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  }
+  const perrosMes = filtrarMes(histPerros);
+  const gatosMes = filtrarMes(histGatos);
+  const cloroMes = filtrarMes(histCloro);
 
-    const tabla = filas.length ? filas.map(([zona, data]) => `
-      <tr><td>${escapeHtml(zona)}</td><td>${escapeHtml(data.trabajador)}</td><td>${escapeHtml(data.fecha)}</td><td>${escapeHtml(data.hora)}</td></tr>
-    `).join("") : `<tr><td colspan="4">No hay registros de limpieza esta semana.</td></tr>`;
-
-    abrirVentanaImpresion("Registro semanal de limpieza", `
-      <h1>Registro semanal de limpieza</h1>
+  function exportarListado(titulo, filas, columnas, periodo) {
+    const body = filas.length
+      ? filas.map((row) => `<tr>${columnas.map((c) => `<td>${escapeHtml(String(row[c.key] ?? ""))}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${columnas.length}">No hay registros.</td></tr>`;
+    abrirVentanaImpresion(titulo, `
+      <h1>${escapeHtml(titulo)}</h1>
       <p><span class="badge">Modepran</span></p>
-      <p><strong>Semana:</strong> ${inicio.toLocaleDateString("es-ES")} - ${fin.toLocaleDateString("es-ES")}</p>
-      <table><thead><tr><th>Zona</th><th>Trabajador</th><th>Fecha</th><th>Hora</th></tr></thead><tbody>${tabla}</tbody></table>
+      <p><strong>Periodo:</strong> ${escapeHtml(periodo)}</p>
+      <table><thead><tr>${columnas.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
     `);
-  };
+  }
 
-  const exportarCloracionMensual = () => {
-    const hoy = new Date();
-    const mesActual = hoy.getMonth();
-    const anioActual = hoy.getFullYear();
+  function exportarMes(tipo) {
+    const periodo = `${meses[mesHist]} ${anioHist}`;
+    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+  }
+  function exportarAnio(tipo) {
+    const periodo = `Año ${anioHist}`;
+    const perrosAnio = histPerros.filter((r) => Number(r.fecha.split("/")[2]) === anioHist);
+    const gatosAnio = histGatos.filter((r) => Number(r.fecha.split("/")[2]) === anioHist);
+    const cloroAnio = histCloro.filter((r) => Number(r.fecha.split("/")[2]) === anioHist);
+    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+  }
 
-    const filas = Object.entries(cloracion)
-      .filter(([, data]) => {
-        const fecha = new Date(data.timestamp || hoy.toISOString());
-        return fecha.getMonth() === mesActual && fecha.getFullYear() === anioActual;
-      })
-      .sort((a, b) => new Date(a[1].timestamp || hoy.toISOString()) - new Date(b[1].timestamp || hoy.toISOString()));
-
-    const tabla = filas.length ? filas.map(([deposito, data]) => `
-      <tr><td>${escapeHtml(deposito)}</td><td>${escapeHtml(data.trabajador)}</td><td>${escapeHtml(data.fecha)}</td><td>${escapeHtml(data.hora)}</td></tr>
-    `).join("") : `<tr><td colspan="4">No hay registros de cloración este mes.</td></tr>`;
-
-    abrirVentanaImpresion("Registro mensual de cloración", `
-      <h1>Control mensual de cloración</h1>
-      <p><span class="badge">Modepran</span></p>
-      <p><strong>Mes:</strong> ${hoy.toLocaleDateString("es-ES", { month: "long", year: "numeric" })}</p>
-      <table><thead><tr><th>Depósito</th><th>Trabajador</th><th>Fecha</th><th>Hora</th></tr></thead><tbody>${tabla}</tbody></table>
-    `);
-  };
-
-  const selectStyle = {
-    width: "100%",
-    padding: "14px 16px",
-    borderRadius: 16,
-    border: "1px solid #ddd",
-    background: "#fff",
-    fontSize: 16,
-    outline: "none"
-  };
-
-  const renderSelect = (onChange) => (
-    <select defaultValue="" onChange={(e) => e.target.value && onChange(e.target.value)} style={selectStyle}>
-      <option value="" disabled>Seleccionar trabajador</option>
-      {trabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
-    </select>
-  );
-
-  const tabButton = (value) => ({
-    padding: "14px 16px",
-    borderRadius: 14,
-    border: 0,
-    cursor: "pointer",
-    background: tab === value ? "#e84d57" : "transparent",
-    color: "#fff",
-    fontWeight: 700,
-    fontSize: 16,
-    letterSpacing: ".01em",
-    transition: "all .2s ease"
-  });
+  const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: 18 }}>
-      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: 22 }}>
-        <div style={{
-          borderRadius: 30,
-          border: "1px solid rgba(255,255,255,0.08)",
-          background: "linear-gradient(90deg,#111,#232323)",
-          boxShadow: "0 24px 60px rgba(0,0,0,0.35)"
-        }}>
-          <div style={{ display: "flex", gap: 18, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", padding: 24 }}>
-            <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-              <div style={{
-                borderRadius: 26,
-                background: "rgba(0,0,0,0.28)",
-                padding: 12,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.2)"
-              }}>
-                <img
-                  src="/logo.png"
-                  alt="Protectora Modepran"
-                  style={{
-                    width: 110,
-                    height: 110,
-                    objectFit: "contain",
-                    display: "block",
-                    borderRadius: 20
-                  }}
-                />
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: isMobile ? 12 : 18 }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: isMobile ? 14 : 22 }}>
+        <div style={{ borderRadius: 30, border: "1px solid rgba(255,255,255,0.08)", background: "linear-gradient(90deg,#111,#232323)", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" }}>
+          <div style={{ display: "flex", gap: 16, justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", padding: isMobile ? 16 : 24 }}>
+            <div style={{ display: "flex", gap: isMobile ? 12 : 18, alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap" }}>
+              <div style={{ borderRadius: 22, background: "rgba(0,0,0,0.28)", padding: 10 }}>
+                <img src="/logo.png" alt="Protectora Modepran" style={{ width: isMobile ? 76 : 110, height: isMobile ? 76 : 110, objectFit: "contain", display: "block", borderRadius: 18 }} />
               </div>
-              <div>
-                <h1 style={{ margin: 0, color: "#fff", fontSize: 46, lineHeight: 1.04, fontWeight: 800, letterSpacing: "-0.03em" }}>
-                  Control sanitario Modepran
-                </h1>
-                <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.74)", fontSize: 18, fontWeight: 500 }}>
-                  Limpieza diaria y cloración de depósitos
-                </p>
-                <p style={{ margin: "10px 0 0", color: "rgba(255,255,255,0.64)", fontSize: 13, fontWeight: 600 }}>
-                  {estadoConexion}
-                </p>
+              <div style={{ flex: 1, minWidth: isMobile ? "100%" : "auto" }}>
+                <h1 style={{ margin: 0, color: "#fff", fontSize: isMobile ? 32 : 44, lineHeight: 1.02, fontWeight: 800, letterSpacing: "-0.03em" }}>Control sanitario Modepran</h1>
+                <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.74)", fontSize: isMobile ? 15 : 18, fontWeight: 500 }}>Limpieza diaria, cloración e histórico</p>
+                <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.64)", fontSize: 13, fontWeight: 700 }}>{estadoConexion}</p>
               </div>
             </div>
-            <div style={{
-              borderRadius: 18,
-              background: "#e84d57",
-              color: "#fff",
-              padding: "12px 18px",
-              fontWeight: 800,
-              letterSpacing: ".01em",
-              boxShadow: "0 8px 20px rgba(232,77,87,0.28)"
-            }}>
-              Registro interno
-            </div>
+            <div style={{ borderRadius: 18, background: "#e84d57", color: "#fff", padding: isMobile ? "10px 14px" : "12px 18px", fontWeight: 800 }}>Registro interno</div>
           </div>
         </div>
 
-        <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
-          <button onClick={exportarLimpiezaSemanal} style={{
-            padding: "16px 20px", borderRadius: 18, border: 0, background: "#e84d57", color: "#fff",
-            fontWeight: 800, fontSize: 16, cursor: "pointer", boxShadow: "0 10px 26px rgba(232,77,87,0.28)"
-          }}>
-            Exportar PDF semanal de limpieza
-          </button>
-          <button onClick={exportarCloracionMensual} style={{
-            padding: "16px 20px", borderRadius: 18, border: 0, background: "#fff", color: "#111",
-            fontWeight: 800, fontSize: 16, cursor: "pointer", boxShadow: "0 10px 26px rgba(0,0,0,0.15)"
-          }}>
-            Exportar PDF mensual de cloración
-          </button>
-        </div>
-
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3,1fr)",
-          gap: 8,
-          background: "#171717",
-          padding: 8,
-          borderRadius: 18,
-          border: "1px solid rgba(255,255,255,0.08)"
-        }}>
-          {[
-            ["perros", "🐶 Perros"],
-            ["gatos", "🐱 Gatos"],
-            ["cloro", "💧 Cloración"],
-          ].map(([value, label]) => (
-            <button key={value} onClick={() => setTab(value)} style={tabButton(value)}>{label}</button>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, background: "#171717", padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 8, zIndex: 5 }}>
+          {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"],["historico","📊 Histórico"]].map(([value, label]) => (
+            <button key={value} onClick={() => setTab(value)} style={{ padding: isMobile ? "15px 8px" : "14px 16px", borderRadius: 14, border: 0, cursor: "pointer", background: tab === value ? "#e84d57" : "transparent", color: "#fff", fontWeight: 800, fontSize: isMobile ? 14 : 16 }}>{label}</button>
           ))}
         </div>
+
+        {tab !== "historico" && (
+          <div style={{ borderRadius: 20, background: totalPendientes === 0 ? "#064e3b" : "#3a2d00", color: "#fff", padding: isMobile ? "14px 16px" : "14px 18px", fontWeight: 800, fontSize: isMobile ? 15 : 16 }}>
+            {totalPendientes === 0 ? "Todo al día. No quedan tareas pendientes." : `Pendientes actuales: ${totalPendientes}`}
+          </div>
+        )}
 
         {tab === "perros" && (
           <div style={{ display: "grid", gap: 18 }}>
             <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 18 }}>
-                <div>
-                  <p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 600 }}>Control variable</p>
-                  <p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: 22 }}>¿Hay infecciosos perros?</p>
-                </div>
-                <input type="checkbox" checked={infecciososPerros} onChange={(e) => setInfecciososPerros(e.target.checked)} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
+                <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos perros?</p></div>
+                <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososPerros} onChange={(e) => setInfecciososPerros(e.target.checked)} />
               </div>
             </Card>
-
             {Object.entries(zonasPerros).map(([grupo, lista]) => (
-              <Card key={grupo}>
-                <div style={{ padding: 24 }}>
-                  <SectionTitle>{grupo}</SectionTitle>
-                  <div style={{ display: "grid", gap: 14 }}>
-                    {lista.map((zona) => {
-                      const hecho = limpieza[zona];
-                      return (
-                        <div key={zona} style={{
-                          border: "1px solid #ececec",
-                          borderRadius: 20,
-                          padding: 18,
-                          background: hecho ? "#ecfdf5" : "#fff"
-                        }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                            <span style={{ fontWeight: 800, fontSize: 20, color: "#1f1f1f" }}>{zona}</span>
-                            <EstadoBadge hecho={!!hecho} />
-                          </div>
-                          {renderSelect((v) => registrar(zona, v))}
-                          {hecho && <div style={{ marginTop: 12, fontSize: 14, color: "#555", lineHeight: 1.7 }}>
-                            <div><strong>Trabajador:</strong> {hecho.trabajador}</div>
-                            <div><strong>Fecha:</strong> {hecho.fecha}</div>
-                            <div><strong>Hora:</strong> {hecho.hora}</div>
-                          </div>}
-                        </div>
-                      );
-                    })}
-                  </div>
+              <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
+                <SectionTitle>{grupo}</SectionTitle>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {lista.map((zona) => <RegistroRow key={zona} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
                 </div>
-              </Card>
+              </div></Card>
             ))}
-
-            {infecciososPerros && (
-              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
-                <div style={{ padding: 24 }}>
-                  <SectionTitle>🚨 Infecciosos Perros</SectionTitle>
-                  {renderSelect((v) => registrar("Infecciosos Perros", v))}
-                  {limpieza["Infecciosos Perros"] && <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.7 }}>
-                    <div><strong>Trabajador:</strong> {limpieza["Infecciosos Perros"].trabajador}</div>
-                    <div><strong>Fecha:</strong> {limpieza["Infecciosos Perros"].fecha}</div>
-                    <div><strong>Hora:</strong> {limpieza["Infecciosos Perros"].hora}</div>
-                  </div>}
-                </div>
-              </Card>
-            )}
+            {infecciososPerros && <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}><div style={{ padding: isMobile ? 16 : 24 }}>
+              <SectionTitle>🚨 Infecciosos Perros</SectionTitle>
+              <RegistroRow title="Infecciosos Perros" registro={limpiezaHoy["Infecciosos Perros"]} onSelect={(v) => registrar("Infecciosos Perros", v)} disabled={!!limpiezaHoy["Infecciosos Perros"]} bloqueado={!!limpiezaHoy["Infecciosos Perros"]} />
+            </div></Card>}
           </div>
         )}
 
         {tab === "gatos" && (
           <div style={{ display: "grid", gap: 18 }}>
             <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 18 }}>
-                <div>
-                  <p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 600 }}>Control variable</p>
-                  <p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: 22 }}>¿Hay infecciosos gatos?</p>
-                </div>
-                <input type="checkbox" checked={infecciososGatos} onChange={(e) => setInfecciososGatos(e.target.checked)} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
+                <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos gatos?</p></div>
+                <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososGatos} onChange={(e) => setInfecciososGatos(e.target.checked)} />
               </div>
             </Card>
-
             {Object.entries(zonasGatos).map(([grupo, lista]) => (
-              <Card key={grupo}>
-                <div style={{ padding: 24 }}>
-                  <SectionTitle>{grupo}</SectionTitle>
-                  <div style={{ display: "grid", gap: 14 }}>
-                    {lista.map((zona) => {
-                      const hecho = limpieza[zona];
-                      return (
-                        <div key={zona} style={{
-                          border: "1px solid #ececec",
-                          borderRadius: 20,
-                          padding: 18,
-                          background: hecho ? "#ecfdf5" : "#fff"
-                        }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                            <span style={{ fontWeight: 800, fontSize: 20, color: "#1f1f1f" }}>{zona}</span>
-                            <EstadoBadge hecho={!!hecho} />
-                          </div>
-                          {renderSelect((v) => registrar(zona, v))}
-                          {hecho && <div style={{ marginTop: 12, fontSize: 14, color: "#555", lineHeight: 1.7 }}>
-                            <div><strong>Trabajador:</strong> {hecho.trabajador}</div>
-                            <div><strong>Fecha:</strong> {hecho.fecha}</div>
-                            <div><strong>Hora:</strong> {hecho.hora}</div>
-                          </div>}
-                        </div>
-                      );
-                    })}
-                  </div>
+              <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
+                <SectionTitle>{grupo}</SectionTitle>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {lista.map((zona) => <RegistroRow key={zona} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
                 </div>
-              </Card>
+              </div></Card>
             ))}
-
-            {infecciososGatos && (
-              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
-                <div style={{ padding: 24 }}>
-                  <SectionTitle>🚨 Infecciosos Gatos</SectionTitle>
-                  {renderSelect((v) => registrar("Infecciosos Gatos", v))}
-                  {limpieza["Infecciosos Gatos"] && <div style={{ marginTop: 12, fontSize: 14, lineHeight: 1.7 }}>
-                    <div><strong>Trabajador:</strong> {limpieza["Infecciosos Gatos"].trabajador}</div>
-                    <div><strong>Fecha:</strong> {limpieza["Infecciosos Gatos"].fecha}</div>
-                    <div><strong>Hora:</strong> {limpieza["Infecciosos Gatos"].hora}</div>
-                  </div>}
-                </div>
-              </Card>
-            )}
+            {infecciososGatos && <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}><div style={{ padding: isMobile ? 16 : 24 }}>
+              <SectionTitle>🚨 Infecciosos Gatos</SectionTitle>
+              <RegistroRow title="Infecciosos Gatos" registro={limpiezaHoy["Infecciosos Gatos"]} onSelect={(v) => registrar("Infecciosos Gatos", v)} disabled={!!limpiezaHoy["Infecciosos Gatos"]} bloqueado={!!limpiezaHoy["Infecciosos Gatos"]} />
+            </div></Card>}
           </div>
         )}
 
         {tab === "cloro" && (
-          <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))" }}>
-            {depositos.map((d) => {
-              const hecho = cloracion[d];
-              return (
-                <Card key={d} style={{ background: hecho ? "#ecfdf5" : "#f8f8f8" }}>
-                  <div style={{ padding: 18 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                      <span style={{ fontWeight: 800, fontSize: 20, color: "#1f1f1f" }}>{d}</span>
-                      <EstadoBadge hecho={!!hecho} />
-                    </div>
-                    {renderSelect((v) => registrarCloro(d, v))}
-                    {hecho && <div style={{ marginTop: 12, fontSize: 14, color: "#555", lineHeight: 1.7 }}>
-                      <div><strong>Trabajador:</strong> {hecho.trabajador}</div>
-                      <div><strong>Fecha:</strong> {hecho.fecha}</div>
-                      <div><strong>Hora:</strong> {hecho.hora}</div>
-                    </div>}
+          <div style={{ display: "grid", gap: 14, gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(280px,1fr))" }}>
+            {depositos.map((d) => <RegistroRow key={d} title={d} registro={cloracionHoy[d]} onSelect={(v) => registrarCloro(d, v)} disabled={!!cloracionHoy[d]} bloqueado={!!cloracionHoy[d]} />)}
+          </div>
+        )}
+
+        {tab === "historico" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card><div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 16 }}>
+              <SectionTitle>Histórico</SectionTitle>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,1fr)", gap: 12 }}>
+                <MonthYearPicker mes={mesHist} setMes={setMesHist} anio={anioHist} setAnio={setAnioHist} />
+                <input type="date" value={fechaRetro} onChange={(e) => setFechaRetro(e.target.value)} style={inputStyle} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, background: "#efefef", padding: 8, borderRadius: 18 }}>
+                {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"]].map(([value, label]) => (
+                  <button key={value} onClick={() => setHistoricoTab(value)} style={{ padding: "14px 10px", borderRadius: 14, border: 0, cursor: "pointer", background: historicoTab === value ? "#e84d57" : "transparent", color: historicoTab === value ? "#fff" : "#111", fontWeight: 800 }}>{label}</button>
+                ))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                <button onClick={() => exportarMes(historicoTab)} style={{ ...topCardStyle, background: "#e84d57", color: "#fff" }}>Exportar mes</button>
+                <button onClick={() => exportarAnio(historicoTab)} style={{ ...topCardStyle, background: "#111", color: "#fff" }}>Exportar año</button>
+              </div>
+              <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>Puedes completar registros atrasados usando la fecha seleccionada. Quedarán marcados como retroactivos.</div>
+            </div></Card>
+
+            {historicoTab === "perros" && (
+              <Card><div style={{ padding: isMobile ? 16 : 24, display: "grid", gap: 14 }}>
+                <SectionTitle>Limpieza perros · {meses[mesHist]} {anioHist}</SectionTitle>
+                {Object.entries(zonasPerros).map(([grupo, lista]) => (
+                  <div key={grupo} style={{ display: "grid", gap: 10 }}>
+                    <h3 style={{ margin: "0 0 4px", color: "#222" }}>{grupo}</h3>
+                    {lista.map((zona) => {
+                      const fechaObjetivo = esFromInput(fechaRetro);
+                      const registro = perrosMes.find((r) => r.zona === zona && r.fecha === fechaObjetivo);
+                      return <RegistroRow key={zona} title={`${zona} · ${fechaObjetivo}`} registro={registro} onSelect={(v) => registrar(zona, v, fechaObjetivo)} retroInfo={!!registro?.retroactivo} />
+                    })}
                   </div>
-                </Card>
-              );
-            })}
+                ))}
+                <div style={{ marginTop: 8, fontSize: 14, color: "#444", fontWeight: 700 }}>Registros del mes: {perrosMes.length}</div>
+              </div></Card>
+            )}
+
+            {historicoTab === "gatos" && (
+              <Card><div style={{ padding: isMobile ? 16 : 24, display: "grid", gap: 14 }}>
+                <SectionTitle>Limpieza gatos · {meses[mesHist]} {anioHist}</SectionTitle>
+                {Object.entries(zonasGatos).map(([grupo, lista]) => (
+                  <div key={grupo} style={{ display: "grid", gap: 10 }}>
+                    <h3 style={{ margin: "0 0 4px", color: "#222" }}>{grupo}</h3>
+                    {lista.map((zona) => {
+                      const fechaObjetivo = esFromInput(fechaRetro);
+                      const registro = gatosMes.find((r) => r.zona === zona && r.fecha === fechaObjetivo);
+                      return <RegistroRow key={zona} title={`${zona} · ${fechaObjetivo}`} registro={registro} onSelect={(v) => registrar(zona, v, fechaObjetivo)} retroInfo={!!registro?.retroactivo} />
+                    })}
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, fontSize: 14, color: "#444", fontWeight: 700 }}>Registros del mes: {gatosMes.length}</div>
+              </div></Card>
+            )}
+
+            {historicoTab === "cloro" && (
+              <Card><div style={{ padding: isMobile ? 16 : 24, display: "grid", gap: 14 }}>
+                <SectionTitle>Cloración · {meses[mesHist]} {anioHist}</SectionTitle>
+                {depositos.map((dep) => {
+                  const fechaObjetivo = esFromInput(fechaRetro);
+                  const registro = cloroMes.find((r) => r.deposito === dep && r.fecha === fechaObjetivo);
+                  return <RegistroRow key={dep} title={`${dep} · ${fechaObjetivo}`} registro={registro} onSelect={(v) => registrarCloro(dep, v, fechaObjetivo)} retroInfo={!!registro?.retroactivo} />
+                })}
+                <div style={{ marginTop: 8, fontSize: 14, color: "#444", fontWeight: 700 }}>Registros del mes: {cloroMes.length}</div>
+              </div></Card>
+            )}
           </div>
         )}
       </div>
