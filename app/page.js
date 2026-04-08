@@ -37,36 +37,49 @@ function dateInputValue(date) {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
-function esFromInput(isoDate) {
-  const d = new Date(isoDate + "T12:00:00");
-  return d.toLocaleDateString("es-ES");
+function esFromParts(y,m,d){
+  return `${d}/${m}/${y}`;
+}
+function getDaysInMonth(year, monthIndex){
+  return new Date(year, monthIndex + 1, 0).getDate();
 }
 function escapeHtml(text) {
   return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
 function abrirVentanaImpresion(titulo, contenido) {
-  const win = window.open("", "_blank", "width=1100,height=850");
+  const win = window.open("", "_blank", "width=1200,height=900");
   if (!win) return;
   win.document.write(`
-    <html>
-      <head>
-        <title>${escapeHtml(titulo)}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
-          h1 { margin: 0 0 8px; color: #e84d57; }
-          p { margin: 6px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-          th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
-          th { background: #f4f4f4; }
-          .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e84d57; color: white; font-size: 12px; }
-        </style>
-      </head>
-      <body>${contenido}</body>
-    </html>
+    <html><head><title>${escapeHtml(titulo)}</title><style>
+      body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
+      h1 { margin: 0 0 8px; color: #e84d57; }
+      p { margin: 6px 0; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+      th { background: #f4f4f4; }
+      .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e84d57; color: white; font-size: 12px; }
+    </style></head><body>${contenido}</body></html>
   `);
   win.document.close();
   win.focus();
   setTimeout(() => win.print(), 250);
+}
+
+const inputStyle = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: 16,
+  border: "1px solid #ddd",
+  background: "#fff",
+  fontSize: 16,
+  outline: "none"
+};
+
+function Card({ children, style = {} }) {
+  return <div style={{ borderRadius: 24, background: "#f8f8f8", boxShadow: "0 14px 40px rgba(0,0,0,0.18)", overflow: "hidden", ...style }}>{children}</div>;
+}
+function SectionTitle({ children }) {
+  return <h2 style={{ margin: "0 0 18px", color: "#e84d57", fontSize: 28, lineHeight: 1.1, fontWeight: 800 }}>{children}</h2>;
 }
 function EstadoBadge({ hecho, alerta = false }) {
   const style = {
@@ -77,13 +90,28 @@ function EstadoBadge({ hecho, alerta = false }) {
   };
   return <span style={style}>{hecho ? "✔ Hecho" : alerta ? "⚠" : "Pendiente"}</span>;
 }
-function Card({ children, style = {} }) {
-  return <div style={{ borderRadius: 24, background: "#f8f8f8", boxShadow: "0 14px 40px rgba(0,0,0,0.18)", overflow: "hidden", ...style }}>{children}</div>;
+function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = false }) {
+  return (
+    <div style={{ border: "1px solid #ececec", borderRadius: 20, padding: 16, background: registro ? "#ecfdf5" : "#fff" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 800, fontSize: 18, color: "#1f1f1f" }}>{title}</span>
+        <EstadoBadge hecho={!!registro} />
+      </div>
+      <select disabled={disabled} defaultValue="" onChange={(e) => e.target.value && onSelect(e.target.value)} style={{ ...inputStyle, opacity: disabled ? .65 : 1 }}>
+        <option value="">{bloqueado ? "Ya registrado hoy" : "Seleccionar trabajador"}</option>
+        {!disabled && trabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      {registro && (
+        <div style={{ marginTop: 10, fontSize: 14, color: "#555", lineHeight: 1.6 }}>
+          <div><strong>Trabajador:</strong> {registro.trabajador}</div>
+          <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
+          <div><strong>Hora:</strong> {registro.hora}</div>
+          {registro.retroactivo && <div style={{ color: "#b45309", fontWeight: 700 }}>Registro retroactivo</div>}
+        </div>
+      )}
+    </div>
+  );
 }
-function SectionTitle({ children }) {
-  return <h2 style={{ margin: "0 0 18px", color: "#e84d57", fontSize: 28, lineHeight: 1.1, fontWeight: 800 }}>{children}</h2>;
-}
-const inputStyle = { width: "100%", padding: "14px 16px", borderRadius: 16, border: "1px solid #ddd", background: "#fff", fontSize: 16, outline: "none" };
 
 function MonthYearPicker({ mes, setMes, anio, setAnio }) {
   const years = [];
@@ -101,61 +129,67 @@ function MonthYearPicker({ mes, setMes, anio, setAnio }) {
   );
 }
 
-function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = false, retroInfo = false }) {
-  return (
-    <div style={{ border: "1px solid #ececec", borderRadius: 20, padding: 16, background: registro ? "#ecfdf5" : "#fff" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-        <span style={{ fontWeight: 800, fontSize: 18, color: "#1f1f1f" }}>{title}</span>
-        <EstadoBadge hecho={!!registro} />
-      </div>
-      <select disabled={disabled} defaultValue="" onChange={(e) => e.target.value && onSelect(e.target.value)} style={{ ...inputStyle, opacity: disabled ? .65 : 1 }}>
-        <option value="">{bloqueado ? "Ya registrado hoy" : "Seleccionar trabajador"}</option>
-        {!disabled && trabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
-      {registro && (
-        <div style={{ marginTop: 10, fontSize: 14, color: "#555", lineHeight: 1.6 }}>
-          <div><strong>Trabajador:</strong> {registro.trabajador}</div>
-          <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
-          <div><strong>Hora:</strong> {registro.hora}</div>
-          {(retroInfo || registro.retroactivo) && <div style={{ color: "#b45309", fontWeight: 700 }}>Registro retroactivo</div>}
-        </div>
-      )}
-    </div>
-  );
-}
+function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
+  const daysInMonth = getDaysInMonth(anio, mes);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
-function CompactItem({ nombre, registro, onSelect, isMobile }) {
+  function buscarRegistro(nombre, day) {
+    const fecha = esFromParts(anio, String(mes + 1).padStart(2,"0"), String(day).padStart(2,"0"));
+    return registros.find((r) => (r.zona === nombre || r.deposito === nombre) && r.fecha === fecha);
+  }
+
   return (
-    <div style={{
-      border: "1px solid #e7e7e7",
-      background: registro ? "#ecfdf5" : "#fff",
-      borderRadius: 16,
-      padding: isMobile ? 10 : 12,
-      display: "grid",
-      gap: 8
-    }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <div style={{ fontWeight: 800, fontSize: isMobile ? 15 : 16, color: "#1b1b1b" }}>{nombre}</div>
-        <EstadoBadge hecho={!!registro} />
-      </div>
-      {registro ? (
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#333" }}>{registro.trabajador}</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, background: "#f1f5f9", padding: "4px 8px", borderRadius: 999, color: "#334155" }}>{registro.fecha}</span>
-            <span style={{ fontSize: 12, background: "#f1f5f9", padding: "4px 8px", borderRadius: 999, color: "#334155" }}>{registro.hora}</span>
-            {(registro.retroactivo) && <span style={{ fontSize: 12, background: "#fff7ed", padding: "4px 8px", borderRadius: 999, color: "#b45309", fontWeight: 700 }}>Retroactivo</span>}
+    <Card>
+      <div style={{ padding: isMobile ? 12 : 18, display: "grid", gap: 14 }}>
+        <SectionTitle>{titulo}</SectionTitle>
+        <div style={{ overflowX: "auto", borderRadius: 16, border: "1px solid #e7e7e7", background: "#fff" }}>
+          <div style={{ minWidth: isMobile ? 900 : 1200 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(38px, 1fr))", background: "#f8fafc", borderBottom: "1px solid #e7e7e7", position: "sticky", top: 0, zIndex: 2 }}>
+              <div style={{ padding: 10, fontWeight: 800, borderRight: "1px solid #e7e7e7" }}>Zona / Depósito</div>
+              {days.map((d) => (
+                <div key={d} style={{ padding: 10, textAlign: "center", fontWeight: 800, borderRight: "1px solid #eef2f7", fontSize: 13 }}>{d}</div>
+              ))}
+            </div>
+            {items.map((item, idx) => (
+              <div key={item} style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(38px, 1fr))", borderBottom: idx === items.length - 1 ? "0" : "1px solid #f1f5f9" }}>
+                <div style={{ padding: "10px 12px", borderRight: "1px solid #e7e7e7", fontWeight: 700, display: "flex", alignItems: "center" }}>{item}</div>
+                {days.map((d) => {
+                  const reg = buscarRegistro(item, d);
+                  const fecha = esFromParts(anio, String(mes + 1).padStart(2,"0"), String(d).padStart(2,"0"));
+                  return (
+                    <button
+                      key={d}
+                      title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}${reg.retroactivo ? '\nRetroactivo' : ''}` : `Añadir ${item} - ${fecha}`}
+                      onClick={() => {
+                        if (!reg) {
+                          const trabajador = window.prompt(`Trabajador para ${item} el ${fecha}`);
+                          if (trabajador) onAdd(item, trabajador, fecha);
+                        }
+                      }}
+                      style={{
+                        border: 0,
+                        borderRight: "1px solid #eef2f7",
+                        background: reg ? (reg.retroactivo ? "#fff7ed" : "#dcfce7") : "#fff",
+                        color: reg ? (reg.retroactivo ? "#b45309" : "#166534") : "#94a3b8",
+                        minHeight: 40,
+                        cursor: reg ? "default" : "pointer",
+                        fontWeight: 800,
+                        fontSize: 12
+                      }}
+                    >
+                      {reg ? (reg.retroactivo ? "R" : "✔") : "·"}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
-      ) : (
-        <select defaultValue="" onChange={(e)=>e.target.value && onSelect(e.target.value)} style={{
-          width: "100%", padding: isMobile ? "10px 12px" : "9px 12px", borderRadius: 12, border: "1px solid #ddd", background: "#fff", fontSize: 14, outline: "none"
-        }}>
-          <option value="">Seleccionar trabajador</option>
-          {trabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-      )}
-    </div>
+        <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
+          Verde = hecho · Naranja = retroactivo · Punto gris = pendiente. Pulsa una celda pendiente para completar ese día.
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -169,7 +203,6 @@ export default function Page() {
   const [infecciososPerros, setInfecciososPerros] = useState(false);
   const [mesHist, setMesHist] = useState(today.getMonth());
   const [anioHist, setAnioHist] = useState(today.getFullYear());
-  const [fechaRetro, setFechaRetro] = useState(dateInputValue(today));
   const [limpiezaHoy, setLimpiezaHoy] = useState({});
   const [cloracionHoy, setCloracionHoy] = useState({});
   const [histPerros, setHistPerros] = useState([]);
@@ -294,7 +327,8 @@ export default function Page() {
   }
 
   const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
-  const fechaObjetivo = esFromInput(fechaRetro);
+  const zonasPerrosOrdenadas = [...zonasPerros["Zona principal"], ...zonasPerros["Campo Nuevo"]];
+  const zonasGatosOrdenadas = [...zonasGatos["Cuarentenas"], ...zonasGatos["Jaulones"]];
 
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: isMobile ? 12 : 18 }}>
@@ -343,10 +377,6 @@ export default function Page() {
                 </div>
               </div></Card>
             ))}
-            {infecciososPerros && <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}><div style={{ padding: isMobile ? 16 : 24 }}>
-              <SectionTitle>🚨 Infecciosos Perros</SectionTitle>
-              <RegistroRow title="Infecciosos Perros" registro={limpiezaHoy["Infecciosos Perros"]} onSelect={(v) => registrar("Infecciosos Perros", v)} disabled={!!limpiezaHoy["Infecciosos Perros"]} bloqueado={!!limpiezaHoy["Infecciosos Perros"]} />
-            </div></Card>}
           </div>
         )}
 
@@ -366,10 +396,6 @@ export default function Page() {
                 </div>
               </div></Card>
             ))}
-            {infecciososGatos && <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}><div style={{ padding: isMobile ? 16 : 24 }}>
-              <SectionTitle>🚨 Infecciosos Gatos</SectionTitle>
-              <RegistroRow title="Infecciosos Gatos" registro={limpiezaHoy["Infecciosos Gatos"]} onSelect={(v) => registrar("Infecciosos Gatos", v)} disabled={!!limpiezaHoy["Infecciosos Gatos"]} bloqueado={!!limpiezaHoy["Infecciosos Gatos"]} />
-            </div></Card>}
           </div>
         )}
 
@@ -381,68 +407,61 @@ export default function Page() {
 
         {tab === "historico" && (
           <div style={{ display: "grid", gap: 18 }}>
-            <Card><div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 16 }}>
-              <SectionTitle>Histórico</SectionTitle>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,1fr)", gap: 12 }}>
-                <MonthYearPicker mes={mesHist} setMes={setMesHist} anio={anioHist} setAnio={setAnioHist} />
-                <input type="date" value={fechaRetro} onChange={(e) => setFechaRetro(e.target.value)} style={inputStyle} />
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 16 }}>
+                <SectionTitle>Histórico mensual completo</SectionTitle>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,1fr)", gap: 12 }}>
+                  <MonthYearPicker mes={mesHist} setMes={setMesHist} anio={anioHist} setAnio={setAnioHist} />
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                    <button onClick={() => exportarMes(historicoTab)} style={{ ...topCardStyle, background: "#e84d57", color: "#fff" }}>Exportar mes</button>
+                    <button onClick={() => exportarAnio(historicoTab)} style={{ ...topCardStyle, background: "#111", color: "#fff" }}>Exportar año</button>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, background: "#efefef", padding: 8, borderRadius: 18 }}>
+                  {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"]].map(([value, label]) => (
+                    <button key={value} onClick={() => setHistoricoTab(value)} style={{ padding: "14px 10px", borderRadius: 14, border: 0, cursor: "pointer", background: historicoTab === value ? "#e84d57" : "transparent", color: historicoTab === value ? "#fff" : "#111", fontWeight: 800 }}>{label}</button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>
+                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Verde = hecho, naranja = retroactivo.
+                </div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, background: "#efefef", padding: 8, borderRadius: 18 }}>
-                {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"]].map(([value, label]) => (
-                  <button key={value} onClick={() => setHistoricoTab(value)} style={{ padding: "14px 10px", borderRadius: 14, border: 0, cursor: "pointer", background: historicoTab === value ? "#e84d57" : "transparent", color: historicoTab === value ? "#fff" : "#111", fontWeight: 800 }}>{label}</button>
-                ))}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
-                <button onClick={() => exportarMes(historicoTab)} style={{ ...topCardStyle, background: "#e84d57", color: "#fff" }}>Exportar mes</button>
-                <button onClick={() => exportarAnio(historicoTab)} style={{ ...topCardStyle, background: "#111", color: "#fff" }}>Exportar año</button>
-              </div>
-              <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>Vista compacta para revisar y completar rápido. Fecha seleccionada: <strong>{fechaObjetivo}</strong></div>
-            </div></Card>
+            </Card>
 
             {historicoTab === "perros" && (
-              <Card><div style={{ padding: isMobile ? 14 : 18, display: "grid", gap: 14 }}>
-                <SectionTitle>Limpieza perros · {meses[mesHist]} {anioHist}</SectionTitle>
-                {Object.entries(zonasPerros).map(([grupo, lista]) => (
-                  <div key={grupo} style={{ display: "grid", gap: 10 }}>
-                    <div style={{ fontWeight: 800, color: "#222", fontSize: 16 }}>{grupo}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                      {lista.map((zona) => {
-                        const registro = perrosMes.find((r) => r.zona === zona && r.fecha === fechaObjetivo);
-                        return <CompactItem key={zona} nombre={zona} registro={registro} onSelect={(v) => registrar(zona, v, fechaObjetivo)} isMobile={isMobile} />
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div></Card>
+              <MesGrid
+                titulo={`Perros · ${meses[mesHist]} ${anioHist}`}
+                items={zonasPerrosOrdenadas}
+                registros={perrosMes}
+                anio={anioHist}
+                mes={mesHist}
+                isMobile={isMobile}
+                onAdd={(item, trabajador, fecha) => registrar(item, trabajador, fecha)}
+              />
             )}
 
             {historicoTab === "gatos" && (
-              <Card><div style={{ padding: isMobile ? 14 : 18, display: "grid", gap: 14 }}>
-                <SectionTitle>Limpieza gatos · {meses[mesHist]} {anioHist}</SectionTitle>
-                {Object.entries(zonasGatos).map(([grupo, lista]) => (
-                  <div key={grupo} style={{ display: "grid", gap: 10 }}>
-                    <div style={{ fontWeight: 800, color: "#222", fontSize: 16 }}>{grupo}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 10 }}>
-                      {lista.map((zona) => {
-                        const registro = gatosMes.find((r) => r.zona === zona && r.fecha === fechaObjetivo);
-                        return <CompactItem key={zona} nombre={zona} registro={registro} onSelect={(v) => registrar(zona, v, fechaObjetivo)} isMobile={isMobile} />
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div></Card>
+              <MesGrid
+                titulo={`Gatos · ${meses[mesHist]} ${anioHist}`}
+                items={zonasGatosOrdenadas}
+                registros={gatosMes}
+                anio={anioHist}
+                mes={mesHist}
+                isMobile={isMobile}
+                onAdd={(item, trabajador, fecha) => registrar(item, trabajador, fecha)}
+              />
             )}
 
             {historicoTab === "cloro" && (
-              <Card><div style={{ padding: isMobile ? 14 : 18, display: "grid", gap: 14 }}>
-                <SectionTitle>Cloración · {meses[mesHist]} {anioHist}</SectionTitle>
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,minmax(0,1fr))", gap: 10 }}>
-                  {depositos.map((dep) => {
-                    const registro = cloroMes.find((r) => r.deposito === dep && r.fecha === fechaObjetivo);
-                    return <CompactItem key={dep} nombre={dep} registro={registro} onSelect={(v) => registrarCloro(dep, v, fechaObjetivo)} isMobile={isMobile} />
-                  })}
-                </div>
-              </div></Card>
+              <MesGrid
+                titulo={`Cloración · ${meses[mesHist]} ${anioHist}`}
+                items={depositos}
+                registros={cloroMes}
+                anio={anioHist}
+                mes={mesHist}
+                isMobile={isMobile}
+                onAdd={(item, trabajador, fecha) => registrarCloro(item, trabajador, fecha)}
+              />
             )}
           </div>
         )}
