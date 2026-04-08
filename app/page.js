@@ -53,6 +53,12 @@ function getDaysInMonth(year, monthIndex){
 function escapeHtml(text) {
   return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
+function workerShort(name) {
+  if (!name) return "";
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[1]}`;
+}
 function abrirVentanaImpresion(titulo, contenido) {
   const win = window.open("", "_blank", "width=1200,height=900");
   if (!win) return;
@@ -150,15 +156,15 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
       <div style={{ padding: isMobile ? 12 : 18, display: "grid", gap: 14 }}>
         <SectionTitle>{titulo}</SectionTitle>
         <div style={{ overflowX: "auto", borderRadius: 16, border: "1px solid #e7e7e7", background: "#fff" }}>
-          <div style={{ minWidth: isMobile ? 900 : 1200 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(38px, 1fr))", background: "#f8fafc", borderBottom: "1px solid #e7e7e7", position: "sticky", top: 0, zIndex: 2 }}>
+          <div style={{ minWidth: isMobile ? 1550 : 2400 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(72px, 1fr))", background: "#f8fafc", borderBottom: "1px solid #e7e7e7", position: "sticky", top: 0, zIndex: 2 }}>
               <div style={{ padding: 10, fontWeight: 800, borderRight: "1px solid #e7e7e7" }}>Zona / Depósito</div>
               {days.map((d) => (
                 <div key={d} style={{ padding: 10, textAlign: "center", fontWeight: 800, borderRight: "1px solid #eef2f7", fontSize: 13 }}>{d}</div>
               ))}
             </div>
             {items.map((item, idx) => (
-              <div key={item} style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(38px, 1fr))", borderBottom: idx === items.length - 1 ? "0" : "1px solid #f1f5f9" }}>
+              <div key={item} style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(72px, 1fr))", borderBottom: idx === items.length - 1 ? "0" : "1px solid #f1f5f9" }}>
                 <div style={{ padding: "10px 12px", borderRight: "1px solid #e7e7e7", fontWeight: 700, display: "flex", alignItems: "center" }}>{item}</div>
                 {days.map((d) => {
                   const reg = buscarRegistro(item, d);
@@ -177,14 +183,31 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                         border: 0,
                         borderRight: "1px solid #eef2f7",
                         background: reg ? (reg.retroactivo ? "#fff7ed" : "#dcfce7") : "#fff",
-                        color: reg ? (reg.retroactivo ? "#b45309" : "#166534") : "#94a3b8",
-                        minHeight: 40,
+                        color: reg ? (reg.retroactivo ? "#1f2937" : "#166534") : "#94a3b8",
+                        minHeight: 64,
                         cursor: reg ? "default" : "pointer",
-                        fontWeight: 800,
-                        fontSize: 12
+                        padding: 4,
+                        display: "grid",
+                        alignContent: "center",
+                        justifyItems: "center",
+                        gap: 2
                       }}
                     >
-                      {reg ? (reg.retroactivo ? "R" : "✔") : "·"}
+                      {reg ? (
+                        <>
+                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: reg.retroactivo ? "#b45309" : "#166534" }}>
+                            {reg.retroactivo ? "R" : "✔"}
+                          </div>
+                          <div style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.1, textAlign: "center", color: "#111827" }}>
+                            {workerShort(reg.trabajador)}
+                          </div>
+                          <div style={{ fontSize: 9, lineHeight: 1.1, textAlign: "center", color: "#475569" }}>
+                            {normalizeEsDate(reg.fecha)}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1, color: "#94a3b8" }}>·</div>
+                      )}
                     </button>
                   );
                 })}
@@ -193,7 +216,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
-          Verde = hecho · Naranja = retroactivo · Punto gris = pendiente. Pulsa una celda pendiente para completar ese día.
+          Verde = hecho · Naranja = retroactivo · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
         </div>
       </div>
     </Card>
