@@ -37,8 +37,15 @@ function dateInputValue(date) {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+function normalizeEsDate(str) {
+  if (!str) return "";
+  const parts = str.split("/");
+  if (parts.length !== 3) return str;
+  const [d,m,y] = parts;
+  return `${Number(d)}/${Number(m)}/${Number(y)}`;
+}
 function esFromParts(y,m,d){
-  return `${d}/${m}/${y}`;
+  return normalizeEsDate(`${d}/${m}/${y}`);
 }
 function getDaysInMonth(year, monthIndex){
   return new Date(year, monthIndex + 1, 0).getDate();
@@ -135,7 +142,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
 
   function buscarRegistro(nombre, day) {
     const fecha = esFromParts(anio, String(mes + 1).padStart(2,"0"), String(day).padStart(2,"0"));
-    return registros.find((r) => (r.zona === nombre || r.deposito === nombre) && r.fecha === fecha);
+    return registros.find((r) => (r.zona === nombre || r.deposito === nombre) && normalizeEsDate(r.fecha) === fecha);
   }
 
   return (
@@ -223,16 +230,16 @@ export default function Page() {
       if (e1) throw e1;
       if (e2) throw e2;
 
-      const hoyEs = new Date().toLocaleDateString("es-ES");
+      const hoyEs = normalizeEsDate(new Date().toLocaleDateString("es-ES"));
       const mapHoyL = {};
       const mapHoyC = {};
       (limpias || []).forEach((item) => {
-        if (item.fecha === hoyEs && !mapHoyL[item.zona]) {
+        if (normalizeEsDate(item.fecha) === hoyEs && !mapHoyL[item.zona]) {
           mapHoyL[item.zona] = { trabajador: item.trabajador, fecha: item.fecha, hora: item.hora, retroactivo: !!item.retroactivo, created_at: item.created_at };
         }
       });
       (cloros || []).forEach((item) => {
-        if (item.fecha === hoyEs && !mapHoyC[item.deposito]) {
+        if (normalizeEsDate(item.fecha) === hoyEs && !mapHoyC[item.deposito]) {
           mapHoyC[item.deposito] = { trabajador: item.trabajador, fecha: item.fecha, hora: item.hora, retroactivo: !!item.retroactivo, created_at: item.created_at };
         }
       });
@@ -265,7 +272,7 @@ export default function Page() {
       if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
       if (zona === "Infecciosos Perros") grupo = "Infecciosos";
     }
-    const retroactivo = fechaElegida !== tiempo.fecha;
+    const retroactivo = normalizeEsDate(fechaElegida) !== normalizeEsDate(tiempo.fecha);
     const { error } = await supabase.from("registros_limpieza").insert([{ categoria, grupo, zona, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
     if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
     await cargarTodo();
@@ -275,7 +282,7 @@ export default function Page() {
     if (!trabajador) return;
     const tiempo = ahora();
     const fechaElegida = fechaTrabajo || tiempo.fecha;
-    const retroactivo = fechaElegida !== tiempo.fecha;
+    const retroactivo = normalizeEsDate(fechaElegida) !== normalizeEsDate(tiempo.fecha);
     const { error } = await supabase.from("registros_cloracion").insert([{ deposito, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
     if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
     await cargarTodo();
@@ -290,7 +297,7 @@ export default function Page() {
 
   function filtrarMes(list) {
     return list.filter((r) => {
-      const [_, m, y] = r.fecha.split("/");
+      const [_, m, y] = normalizeEsDate(r.fecha).split("/");
       return Number(m) - 1 === mesHist && Number(y) === anioHist;
     }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }
@@ -318,9 +325,9 @@ export default function Page() {
   }
   function exportarAnio(tipo) {
     const periodo = `Año ${anioHist}`;
-    const perrosAnio = histPerros.filter((r) => Number(r.fecha.split("/")[2]) === anioHist);
-    const gatosAnio = histGatos.filter((r) => Number(r.fecha.split("/")[2]) === anioHist);
-    const cloroAnio = histCloro.filter((r) => Number(r.fecha.split("/")[2]) === anioHist);
+    const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
+    const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
+    const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
     if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
     if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
