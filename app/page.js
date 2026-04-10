@@ -63,15 +63,84 @@ function abrirVentanaImpresion(titulo, contenido) {
   const win = window.open("", "_blank", "width=1200,height=900");
   if (!win) return;
   win.document.write(`
-    <html><head><title>${escapeHtml(titulo)}</title><style>
-      body { font-family: Arial, sans-serif; padding: 24px; color: #222; }
-      h1 { margin: 0 0 8px; color: #e84d57; }
-      p { margin: 6px 0; }
-      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-      th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
-      th { background: #f4f4f4; }
-      .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e84d57; color: white; font-size: 12px; }
-    </style></head><body>${contenido}</body></html>
+    <html>
+      <head>
+        <title>${escapeHtml(titulo)}</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 5mm;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: white;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            color: #222;
+            padding: 6mm;
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print-wrap {
+            transform-origin: top left;
+            width: 100%;
+          }
+          h1 {
+            margin: 0 0 4px;
+            color: #e84d57;
+            font-size: 15px;
+            line-height: 1.1;
+          }
+          p {
+            margin: 3px 0;
+            font-size: 10px;
+            line-height: 1.15;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            table-layout: fixed;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 3px 4px;
+            text-align: left;
+            font-size: 9px;
+            line-height: 1.1;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            vertical-align: top;
+          }
+          th {
+            background: #f4f4f4;
+            font-size: 9px;
+          }
+          .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #e84d57;
+            color: white;
+            font-size: 9px;
+            font-weight: 700;
+          }
+          @media print {
+            body {
+              zoom: 0.78;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-wrap">
+          ${contenido}
+        </div>
+      </body>
+    </html>
   `);
   win.document.close();
   win.focus();
@@ -410,18 +479,18 @@ export default function Page() {
 
   function exportarMes(tipo) {
     const periodo = `${meses[mesHist]} ${anioHist}`;
-    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
   }
   function exportarAnio(tipo) {
     const periodo = `Año ${anioHist}`;
     const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
-    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Fecha"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
   }
 
   const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
