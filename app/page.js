@@ -362,9 +362,29 @@ export default function Page() {
   const totalPendientes = useMemo(() => {
     const perros = Object.values(zonasPerros).flat().filter((z) => !limpiezaHoy[z]).length;
     const gatos = Object.values(zonasGatos).flat().filter((z) => !limpiezaHoy[z]).length;
-    const deps = depositos.filter((d) => !cloracionHoy[d]).length;
-    return perros + gatos + deps + (infecciososPerros && !limpiezaHoy["Infecciosos Perros"] ? 1 : 0) + (infecciososGatos && !limpiezaHoy["Infecciosos Gatos"] ? 1 : 0);
-  }, [limpiezaHoy, cloracionHoy, infecciososPerros, infecciososGatos]);
+    return perros + gatos + (infecciososPerros && !limpiezaHoy["Infecciosos Perros"] ? 1 : 0) + (infecciososGatos && !limpiezaHoy["Infecciosos Gatos"] ? 1 : 0);
+  }, [limpiezaHoy, infecciososPerros, infecciososGatos]);
+
+  const cloracionMesActual = useMemo(() => {
+    const hoy = new Date();
+    const mes = hoy.getMonth() + 1;
+    const anio = hoy.getFullYear();
+    const map = {};
+    histCloro.forEach((item) => {
+      const partes = String(item.fecha || "").split("/");
+      if (partes.length !== 3) return;
+      const m = Number(partes[1]);
+      const y = Number(partes[2]);
+      if (m === mes && y === anio && !map[item.deposito]) {
+        map[item.deposito] = item;
+      }
+    });
+    return map;
+  }, [histCloro]);
+
+  const pendientesCloracionMes = useMemo(() => {
+    return depositos.filter((d) => !cloracionMesActual[d]).length;
+  }, [cloracionMesActual]);
 
   function filtrarMes(list) {
     return list.filter((r) => {
@@ -531,7 +551,7 @@ export default function Page() {
 
         {tab !== "historico" && (
           <div style={{ borderRadius: 20, background: totalPendientes === 0 ? "#064e3b" : "#3a2d00", color: "#fff", padding: isMobile ? "14px 16px" : "14px 18px", fontWeight: 800, fontSize: isMobile ? 15 : 16 }}>
-            {totalPendientes === 0 ? "Todo al día. No quedan tareas pendientes." : `Pendientes actuales: ${totalPendientes}`}
+            {totalPendientes === 0 ? "Limpieza al día. No quedan tareas pendientes." : `Pendientes actuales de limpieza: ${totalPendientes}`}
           </div>
         )}
 
@@ -574,8 +594,40 @@ export default function Page() {
         )}
 
         {tab === "cloro" && (
-          <div style={{ display: "grid", gap: 14, gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(280px,1fr))" }}>
-            {depositos.map((d) => <RegistroRow key={d} title={d} registro={cloracionHoy[d]} onSelect={(v) => registrarCloro(d, v)} disabled={!!cloracionHoy[d]} bloqueado={!!cloracionHoy[d]} />)}
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={{
+              borderRadius: 20,
+              background: pendientesCloracionMes === 0 ? "#064e3b" : "#3a2d00",
+              color: "#fff",
+              padding: isMobile ? "14px 16px" : "14px 18px",
+              fontWeight: 800,
+              fontSize: isMobile ? 15 : 16
+            }}>
+              {pendientesCloracionMes === 0
+                ? "Cloración del mes al día. Todos los depósitos están marcados este mes."
+                : `Pendientes de cloración del mes actual: ${pendientesCloracionMes}`}
+            </div>
+
+            <div style={{ display: "grid", gap: 14, gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(280px,1fr))" }}>
+              {depositos.map((d) => {
+                const registroMes = cloracionMesActual[d];
+                return (
+                  <RegistroRow
+                    key={d}
+                    title={d}
+                    registro={registroMes ? {
+                      trabajador: registroMes.trabajador,
+                      fecha: registroMes.fecha,
+                      hora: registroMes.hora,
+                      retroactivo: !!registroMes.retroactivo
+                    } : null}
+                    onSelect={(v) => registrarCloro(d, v)}
+                    disabled={!!registroMes}
+                    bloqueado={!!registroMes}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
 
