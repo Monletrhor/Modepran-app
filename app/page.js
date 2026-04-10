@@ -225,6 +225,12 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
 
 export default function Page() {
   const today = new Date();
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
   const [tab, setTab] = useState("perros");
   const [historicoTab, setHistoricoTab] = useState("perros");
   const [isMobile, setIsMobile] = useState(false);
@@ -238,6 +244,48 @@ export default function Page() {
   const [histPerros, setHistPerros] = useState([]);
   const [histGatos, setHistGatos] = useState([]);
   const [histCloro, setHistCloro] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) console.error(error);
+      setSession(data?.session ?? null);
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLoginError("");
+    setLoginLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+    if (error) {
+      console.error(error);
+      setLoginError("Correo o contraseña incorrectos.");
+    }
+    setLoginLoading(false);
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -360,6 +408,86 @@ export default function Page() {
   const zonasPerrosOrdenadas = [...zonasPerros["Zona principal"], ...zonasPerros["Campo Nuevo"]];
   const zonasGatosOrdenadas = [...zonasGatos["Cuarentenas"], ...zonasGatos["Jaulones"]];
 
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: 20 }}>
+        <div style={{ color: "#fff", fontWeight: 800, fontSize: 20 }}>Cargando acceso…</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: 20 }}>
+        <div style={{ width: "100%", maxWidth: 430, background: "#f8f8f8", borderRadius: 28, boxShadow: "0 20px 60px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+          <div style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff", padding: 24, display: "grid", gap: 14 }}>
+            <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+              <img src="/logo.png" alt="Modepran" style={{ width: 74, height: 74, objectFit: "contain", borderRadius: 16, background: "rgba(255,255,255,0.04)", padding: 6 }} />
+              <div>
+                <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.05 }}>Acceso privado</div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)" }}>Control sanitario Modepran</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>
+              Solo usuarios autorizados pueden entrar.
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} style={{ padding: 22, display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label style={{ fontWeight: 700, color: "#222" }}>Correo</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@correo.com"
+                autoComplete="email"
+                style={inputStyle}
+                required
+              />
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label style={{ fontWeight: 700, color: "#222" }}>Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                style={inputStyle}
+                required
+              />
+            </div>
+
+            {loginError && (
+              <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 14, padding: "12px 14px", fontWeight: 700, fontSize: 14 }}>
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              style={{
+                padding: "15px 18px",
+                borderRadius: 16,
+                border: 0,
+                background: "#e84d57",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 16,
+                cursor: "pointer",
+                opacity: loginLoading ? 0.8 : 1
+              }}
+            >
+              {loginLoading ? "Entrando..." : "Entrar"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: isMobile ? 12 : 18 }}>
       <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: isMobile ? 14 : 22 }}>
@@ -375,7 +503,23 @@ export default function Page() {
                 <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.64)", fontSize: 13, fontWeight: 700 }}>{estadoConexion}</p>
               </div>
             </div>
-            <div style={{ borderRadius: 18, background: "#e84d57", color: "#fff", padding: isMobile ? "10px 14px" : "12px 18px", fontWeight: 800 }}>Registro interno</div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ borderRadius: 18, background: "#e84d57", color: "#fff", padding: isMobile ? "10px 14px" : "12px 18px", fontWeight: 800 }}>Registro interno</div>
+              <button
+                onClick={handleLogout}
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "#111",
+                  color: "#fff",
+                  padding: isMobile ? "10px 14px" : "12px 18px",
+                  fontWeight: 800,
+                  cursor: "pointer"
+                }}
+              >
+                Cerrar sesión
+              </button>
+            </div>
           </div>
         </div>
 
