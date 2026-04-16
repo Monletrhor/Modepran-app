@@ -242,12 +242,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                     <button
                       key={d}
                       title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}${reg.retroactivo ? '\nRetroactivo' : ''}` : `Añadir ${item} - ${fecha}`}
-                      onClick={() => {
-                        if (!reg) {
-                          const trabajador = window.prompt(`Trabajador para ${item} el ${fecha}`);
-                          if (trabajador) onAdd(item, trabajador, fecha);
-                        }
-                      }}
+                      onClick={() => { if (!reg) { onAdd(item, fecha); } }}
                       style={{
                         border: 0,
                         borderRight: "1px solid #eef2f7",
@@ -313,6 +308,15 @@ export default function Page() {
   const [histPerros, setHistPerros] = useState([]);
   const [histGatos, setHistGatos] = useState([]);
   const [histCloro, setHistCloro] = useState([]);
+  const [selectorAbierto, setSelectorAbierto] = useState(false);
+  const [selectorTrabajador, setSelectorTrabajador] = useState("");
+  const [selectorTrabajadorManual, setSelectorTrabajadorManual] = useState("");
+  const [selectorItem, setSelectorItem] = useState("");
+  const [selectorFecha, setSelectorFecha] = useState("");
+  const [selectorTipo, setSelectorTipo] = useState("limpieza");
+  const [protocoloPerros, setProtocoloPerros] = useState("");
+  const [protocoloGatos, setProtocoloGatos] = useState("");
+  const [protocoloCloro, setProtocoloCloro] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -362,6 +366,28 @@ export default function Page() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setProtocoloPerros(localStorage.getItem("modepran_protocolo_perros") || "");
+    setProtocoloGatos(localStorage.getItem("modepran_protocolo_gatos") || "");
+    setProtocoloCloro(localStorage.getItem("modepran_protocolo_cloro") || "");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("modepran_protocolo_perros", protocoloPerros);
+  }, [protocoloPerros]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("modepran_protocolo_gatos", protocoloGatos);
+  }, [protocoloGatos]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("modepran_protocolo_cloro", protocoloCloro);
+  }, [protocoloCloro]);
 
   async function cargarTodo() {
     try {
@@ -426,6 +452,31 @@ export default function Page() {
     const { error } = await supabase.from("registros_cloracion").insert([{ deposito, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
     if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
     await cargarTodo();
+  }
+
+  function abrirSelector(item, fecha, tipo) {
+    setSelectorItem(item);
+    setSelectorFecha(fecha);
+    setSelectorTipo(tipo);
+    setSelectorTrabajador("");
+    setSelectorTrabajadorManual("");
+    setSelectorAbierto(true);
+  }
+
+  async function confirmarSelector() {
+    const trabajadorFinal = (selectorTrabajadorManual || selectorTrabajador || "").trim();
+    if (!trabajadorFinal || !selectorItem || !selectorFecha) return;
+    if (selectorTipo === "cloro") {
+      await registrarCloro(selectorItem, trabajadorFinal, selectorFecha);
+    } else {
+      await registrar(selectorItem, trabajadorFinal, selectorFecha);
+    }
+    setSelectorAbierto(false);
+    setSelectorTrabajador("");
+    setSelectorTrabajadorManual("");
+    setSelectorItem("");
+    setSelectorFecha("");
+    setSelectorTipo("limpieza");
   }
 
   const totalPendientes = useMemo(() => {
@@ -626,6 +677,17 @@ export default function Page() {
 
         {tab === "perros" && (
           <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 10 }}>
+                <SectionTitle>Protocolo de limpieza perros</SectionTitle>
+                <textarea
+                  value={protocoloPerros}
+                  onChange={(e) => setProtocoloPerros(e.target.value)}
+                  placeholder="Escribe aquí el protocolo o descripción de limpieza de perros e infecciosos..."
+                  style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "inherit" }}
+                />
+              </div>
+            </Card>
             <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
                 <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos perros?</p></div>
@@ -640,11 +702,37 @@ export default function Page() {
                 </div>
               </div></Card>
             ))}
+
+            {infecciososPerros && (
+              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
+                <div style={{ padding: isMobile ? 16 : 24 }}>
+                  <SectionTitle>Infecciosos Perros</SectionTitle>
+                  <RegistroRow
+                    title="Limpieza infecciosos perros"
+                    registro={limpiezaHoy["Infecciosos Perros"]}
+                    onSelect={(v) => registrar("Infecciosos Perros", v)}
+                    disabled={!!limpiezaHoy["Infecciosos Perros"]}
+                    bloqueado={!!limpiezaHoy["Infecciosos Perros"]}
+                  />
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
         {tab === "gatos" && (
           <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 10 }}>
+                <SectionTitle>Protocolo de limpieza gatos</SectionTitle>
+                <textarea
+                  value={protocoloGatos}
+                  onChange={(e) => setProtocoloGatos(e.target.value)}
+                  placeholder="Escribe aquí el protocolo o descripción de limpieza de gatos e infecciosos..."
+                  style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "inherit" }}
+                />
+              </div>
+            </Card>
             <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
                 <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos gatos?</p></div>
@@ -659,11 +747,37 @@ export default function Page() {
                 </div>
               </div></Card>
             ))}
+
+            {infecciososGatos && (
+              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
+                <div style={{ padding: isMobile ? 16 : 24 }}>
+                  <SectionTitle>Infecciosos Gatos</SectionTitle>
+                  <RegistroRow
+                    title="Limpieza infecciosos gatos"
+                    registro={limpiezaHoy["Infecciosos Gatos"]}
+                    onSelect={(v) => registrar("Infecciosos Gatos", v)}
+                    disabled={!!limpiezaHoy["Infecciosos Gatos"]}
+                    bloqueado={!!limpiezaHoy["Infecciosos Gatos"]}
+                  />
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
         {tab === "cloro" && (
           <div style={{ display: "grid", gap: 14 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 10 }}>
+                <SectionTitle>Protocolo de cloración</SectionTitle>
+                <textarea
+                  value={protocoloCloro}
+                  onChange={(e) => setProtocoloCloro(e.target.value)}
+                  placeholder="Escribe aquí el protocolo o descripción de cloración..."
+                  style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "inherit" }}
+                />
+              </div>
+            </Card>
             <div style={{
               borderRadius: 20,
               background: pendientesCloracionMes === 0 ? "#064e3b" : "#3a2d00",
@@ -731,7 +845,7 @@ export default function Page() {
                 anio={anioHist}
                 mes={mesHist}
                 isMobile={isMobile}
-                onAdd={(item, trabajador, fecha) => registrar(item, trabajador, fecha)}
+                onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
               />
             )}
 
@@ -743,7 +857,7 @@ export default function Page() {
                 anio={anioHist}
                 mes={mesHist}
                 isMobile={isMobile}
-                onAdd={(item, trabajador, fecha) => registrar(item, trabajador, fecha)}
+                onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
               />
             )}
 
@@ -755,9 +869,108 @@ export default function Page() {
                 anio={anioHist}
                 mes={mesHist}
                 isMobile={isMobile}
-                onAdd={(item, trabajador, fecha) => registrarCloro(item, trabajador, fecha)}
+                onAdd={(item, fecha) => abrirSelector(item, fecha, "cloro")}
               />
             )}
+          </div>
+        )}
+        {selectorAbierto && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              display: "grid",
+              placeItems: "center",
+              padding: 20,
+              zIndex: 1000
+            }}
+            onClick={() => setSelectorAbierto(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                background: "#fff",
+                borderRadius: 24,
+                boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+                overflow: "hidden"
+              }}
+            >
+              <div style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff", padding: 20 }}>
+                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>Completar registro</div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>
+                  {selectorItem} · {selectorFecha}
+                </div>
+              </div>
+
+              <div style={{ padding: 18, display: "grid", gap: 14 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#222" }}>Trabajador prefijado</label>
+                  <select
+                    value={selectorTrabajador}
+                    onChange={(e) => setSelectorTrabajador(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Seleccionar trabajador</option>
+                    {trabajadores.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#222" }}>O escribir trabajador manualmente</label>
+                  <input
+                    type="text"
+                    list="trabajadores-historico"
+                    value={selectorTrabajadorManual}
+                    onChange={(e) => setSelectorTrabajadorManual(e.target.value)}
+                    placeholder="Escribe aquí el nombre si no está en la lista"
+                    style={inputStyle}
+                  />
+                  <datalist id="trabajadores-historico">
+                    {trabajadores.map((t) => (
+                      <option key={`manual-${t}`} value={t} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button
+                    onClick={() => setSelectorAbierto(false)}
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: 16,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                      color: "#111",
+                      fontWeight: 800,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarSelector}
+                    disabled={!(selectorTrabajador || selectorTrabajadorManual.trim())}
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: 16,
+                      border: 0,
+                      background: "#e84d57",
+                      color: "#fff",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      opacity: (selectorTrabajador || selectorTrabajadorManual.trim()) ? 1 : 0.7
+                    }}
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
