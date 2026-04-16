@@ -47,6 +47,25 @@ function normalizeEsDate(str) {
 function esFromParts(y,m,d){
   return normalizeEsDate(`${d}/${m}/${y}`);
 }
+function parseEsDate(str) {
+  const normalized = normalizeEsDate(str);
+  const parts = normalized.split("/");
+  if (parts.length !== 3) return null;
+  const [d, m, y] = parts.map(Number);
+  if (!d || !m || !y) return null;
+  return new Date(y, m - 1, d);
+}
+function compareRowsByFecha(a, b) {
+  const dateA = parseEsDate(a.fecha);
+  const dateB = parseEsDate(b.fecha);
+  const timeA = dateA ? dateA.getTime() : 0;
+  const timeB = dateB ? dateB.getTime() : 0;
+  if (timeA !== timeB) return timeA - timeB;
+  const zonaA = String(a.zona || a.deposito || "");
+  const zonaB = String(b.zona || b.deposito || "");
+  if (zonaA !== zonaB) return zonaA.localeCompare(zonaB, 'es');
+  return String(a.hora || "").localeCompare(String(b.hora || ""), 'es');
+}
 function getDaysInMonth(year, monthIndex){
   return new Date(year, monthIndex + 1, 0).getDate();
 }
@@ -188,7 +207,6 @@ function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = 
           <div><strong>Trabajador:</strong> {registro.trabajador}</div>
           <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
           <div><strong>Hora:</strong> {registro.hora}</div>
-          {registro.retroactivo && <div style={{ color: "#b45309", fontWeight: 700 }}>Registro retroactivo</div>}
         </div>
       )}
     </div>
@@ -241,13 +259,13 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                   return (
                     <button
                       key={d}
-                      title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}${reg.retroactivo ? '\nRetroactivo' : ''}` : `Añadir ${item} - ${fecha}`}
+                      title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}` : `Añadir ${item} - ${fecha}`}
                       onClick={() => { if (!reg) { onAdd(item, fecha); } }}
                       style={{
                         border: 0,
                         borderRight: "1px solid #eef2f7",
-                        background: reg ? (reg.retroactivo ? "#fff7ed" : "#dcfce7") : "#fff",
-                        color: reg ? (reg.retroactivo ? "#1f2937" : "#166534") : "#94a3b8",
+                        background: reg ? "#dcfce7" : "#fff",
+                        color: reg ? "#166534" : "#94a3b8",
                         minHeight: 64,
                         cursor: reg ? "default" : "pointer",
                         padding: 4,
@@ -259,8 +277,8 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                     >
                       {reg ? (
                         <>
-                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: reg.retroactivo ? "#b45309" : "#166534" }}>
-                            {reg.retroactivo ? "R" : "✔"}
+                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: "#166534" }}>
+                            ✔
                           </div>
                           <div style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.1, textAlign: "center", color: "#111827" }}>
                             {workerShort(reg.trabajador)}
@@ -280,7 +298,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
-          Verde = hecho · Naranja = retroactivo · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
+          Verde = hecho · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
         </div>
       </div>
     </Card>
@@ -510,15 +528,16 @@ export default function Page() {
     return list.filter((r) => {
       const [_, m, y] = normalizeEsDate(r.fecha).split("/");
       return Number(m) - 1 === mesHist && Number(y) === anioHist;
-    }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    }).sort(compareRowsByFecha);
   }
   const perrosMes = filtrarMes(histPerros);
   const gatosMes = filtrarMes(histGatos);
   const cloroMes = filtrarMes(histCloro);
 
   function exportarListado(titulo, filas, columnas, periodo) {
-    const body = filas.length
-      ? filas.map((row) => `<tr>${columnas.map((c) => `<td>${escapeHtml(String(row[c.key] ?? ""))}</td>`).join("")}</tr>`).join("")
+    const filasOrdenadas = [...filas].sort(compareRowsByFecha);
+    const body = filasOrdenadas.length
+      ? filasOrdenadas.map((row) => `<tr>${columnas.map((c) => `<td>${escapeHtml(String(row[c.key] ?? ""))}</td>`).join("")}</tr>`).join("")
       : `<tr><td colspan="${columnas.length}">No hay registros.</td></tr>`;
     abrirVentanaImpresion(titulo, `
       <h1>${escapeHtml(titulo)}</h1>
@@ -530,23 +549,37 @@ export default function Page() {
 
   function exportarMes(tipo) {
     const periodo = `${meses[mesHist]} ${anioHist}`;
-    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
   }
   function exportarAnio(tipo) {
     const periodo = `Año ${anioHist}`;
     const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
-    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
   }
 
   const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
-  const zonasPerrosOrdenadas = [...zonasPerros["Zona principal"], ...zonasPerros["Campo Nuevo"]];
-  const zonasGatosOrdenadas = [...zonasGatos["Cuarentenas"], ...zonasGatos["Jaulones"]];
+  const zonasPerrosPantalla = infecciososPerros
+    ? { ...zonasPerros, "Infecciosos": ["Infecciosos Perros"] }
+    : zonasPerros;
+  const zonasGatosPantalla = infecciososGatos
+    ? { ...zonasGatos, "Infecciosos": ["Infecciosos Gatos"] }
+    : zonasGatos;
+  const zonasPerrosOrdenadas = [
+    ...zonasPerros["Zona principal"],
+    ...zonasPerros["Campo Nuevo"],
+    ...((infecciososPerros || histPerros.some((r) => r.zona === "Infecciosos Perros")) ? ["Infecciosos Perros"] : [])
+  ];
+  const zonasGatosOrdenadas = [
+    ...zonasGatos["Cuarentenas"],
+    ...zonasGatos["Jaulones"],
+    ...((infecciososGatos || histGatos.some((r) => r.zona === "Infecciosos Gatos")) ? ["Infecciosos Gatos"] : [])
+  ];
 
   if (authLoading) {
     return (
@@ -694,7 +727,7 @@ export default function Page() {
                 <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososPerros} onChange={(e) => setInfecciososPerros(e.target.checked)} />
               </div>
             </Card>
-            {Object.entries(zonasPerros).map(([grupo, lista]) => (
+            {Object.entries(zonasPerrosPantalla).map(([grupo, lista]) => (
               <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
                 <SectionTitle>{grupo}</SectionTitle>
                 <div style={{ display: "grid", gap: 14 }}>
@@ -703,20 +736,6 @@ export default function Page() {
               </div></Card>
             ))}
 
-            {infecciososPerros && (
-              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
-                <div style={{ padding: isMobile ? 16 : 24 }}>
-                  <SectionTitle>Infecciosos Perros</SectionTitle>
-                  <RegistroRow
-                    title="Limpieza infecciosos perros"
-                    registro={limpiezaHoy["Infecciosos Perros"]}
-                    onSelect={(v) => registrar("Infecciosos Perros", v)}
-                    disabled={!!limpiezaHoy["Infecciosos Perros"]}
-                    bloqueado={!!limpiezaHoy["Infecciosos Perros"]}
-                  />
-                </div>
-              </Card>
-            )}
           </div>
         )}
 
@@ -739,7 +758,7 @@ export default function Page() {
                 <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososGatos} onChange={(e) => setInfecciososGatos(e.target.checked)} />
               </div>
             </Card>
-            {Object.entries(zonasGatos).map(([grupo, lista]) => (
+            {Object.entries(zonasGatosPantalla).map(([grupo, lista]) => (
               <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
                 <SectionTitle>{grupo}</SectionTitle>
                 <div style={{ display: "grid", gap: 14 }}>
@@ -748,20 +767,6 @@ export default function Page() {
               </div></Card>
             ))}
 
-            {infecciososGatos && (
-              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
-                <div style={{ padding: isMobile ? 16 : 24 }}>
-                  <SectionTitle>Infecciosos Gatos</SectionTitle>
-                  <RegistroRow
-                    title="Limpieza infecciosos gatos"
-                    registro={limpiezaHoy["Infecciosos Gatos"]}
-                    onSelect={(v) => registrar("Infecciosos Gatos", v)}
-                    disabled={!!limpiezaHoy["Infecciosos Gatos"]}
-                    bloqueado={!!limpiezaHoy["Infecciosos Gatos"]}
-                  />
-                </div>
-              </Card>
-            )}
           </div>
         )}
 
@@ -832,7 +837,7 @@ export default function Page() {
                   ))}
                 </div>
                 <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>
-                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Verde = hecho, naranja = retroactivo.
+                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Todo lo completado aparece marcado en verde.
                 </div>
               </div>
             </Card>
