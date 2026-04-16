@@ -229,7 +229,7 @@ function MonthYearPicker({ mes, setMes, anio, setAnio }) {
   );
 }
 
-function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
+function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd, onEdit }) {
   const daysInMonth = getDaysInMonth(anio, mes);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
@@ -260,14 +260,14 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                     <button
                       key={d}
                       title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}` : `Añadir ${item} - ${fecha}`}
-                      onClick={() => { if (!reg) { onAdd(item, fecha); } }}
+                      onClick={() => { if (reg) { onEdit && onEdit(reg, item, fecha); } else { onAdd(item, fecha); } }}
                       style={{
                         border: 0,
                         borderRight: "1px solid #eef2f7",
                         background: reg ? "#dcfce7" : "#fff",
                         color: reg ? "#166534" : "#94a3b8",
                         minHeight: 64,
-                        cursor: reg ? "default" : "pointer",
+                        cursor: "pointer",
                         padding: 4,
                         display: "grid",
                         alignContent: "center",
@@ -298,7 +298,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
-          Verde = hecho · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
+          Verde = hecho · En cada celda se ve trabajador y fecha. Pulsa una celda para completar, cambiar o borrar el trabajador.
         </div>
       </div>
     </Card>
@@ -332,6 +332,8 @@ export default function Page() {
   const [selectorItem, setSelectorItem] = useState("");
   const [selectorFecha, setSelectorFecha] = useState("");
   const [selectorTipo, setSelectorTipo] = useState("limpieza");
+  const [selectorModo, setSelectorModo] = useState("crear");
+  const [selectorRegistroId, setSelectorRegistroId] = useState(null);
   const [protocoloPerros, setProtocoloPerros] = useState("");
   const [protocoloGatos, setProtocoloGatos] = useState("");
   const [protocoloCloro, setProtocoloCloro] = useState("");
@@ -472,29 +474,74 @@ export default function Page() {
     await cargarTodo();
   }
 
-  function abrirSelector(item, fecha, tipo) {
-    setSelectorItem(item);
-    setSelectorFecha(fecha);
-    setSelectorTipo(tipo);
-    setSelectorTrabajador("");
-    setSelectorTrabajadorManual("");
-    setSelectorAbierto(true);
-  }
-
-  async function confirmarSelector() {
-    const trabajadorFinal = (selectorTrabajadorManual || selectorTrabajador || "").trim();
-    if (!trabajadorFinal || !selectorItem || !selectorFecha) return;
-    if (selectorTipo === "cloro") {
-      await registrarCloro(selectorItem, trabajadorFinal, selectorFecha);
-    } else {
-      await registrar(selectorItem, trabajadorFinal, selectorFecha);
-    }
+  function cerrarSelector() {
     setSelectorAbierto(false);
     setSelectorTrabajador("");
     setSelectorTrabajadorManual("");
     setSelectorItem("");
     setSelectorFecha("");
     setSelectorTipo("limpieza");
+    setSelectorModo("crear");
+    setSelectorRegistroId(null);
+  }
+
+  function abrirSelector(item, fecha, tipo) {
+    setSelectorItem(item);
+    setSelectorFecha(fecha);
+    setSelectorTipo(tipo);
+    setSelectorModo("crear");
+    setSelectorRegistroId(null);
+    setSelectorTrabajador("");
+    setSelectorTrabajadorManual("");
+    setSelectorAbierto(true);
+  }
+
+  function abrirEditorRegistro(registro, item, fecha, tipo) {
+    const trabajadorActual = String(registro?.trabajador || "").trim();
+    const trabajadorPrefijado = trabajadores.includes(trabajadorActual) ? trabajadorActual : "";
+    setSelectorItem(item || registro?.zona || registro?.deposito || "");
+    setSelectorFecha(fecha || registro?.fecha || "");
+    setSelectorTipo(tipo);
+    setSelectorModo("editar");
+    setSelectorRegistroId(registro?.id ?? null);
+    setSelectorTrabajador(trabajadorPrefijado);
+    setSelectorTrabajadorManual(trabajadorPrefijado ? "" : trabajadorActual);
+    setSelectorAbierto(true);
+  }
+
+  async function actualizarRegistroExistente(trabajadorFinal) {
+    if (!selectorRegistroId) return;
+    const tabla = selectorTipo === "cloro" ? "registros_cloracion" : "registros_limpieza";
+    const payload = { trabajador: trabajadorFinal || "" };
+    const { error } = await supabase.from(tabla).update(payload).eq("id", selectorRegistroId);
+    if (error) { console.error(error); alert("No se ha podido actualizar en Supabase"); return; }
+    await cargarTodo();
+    cerrarSelector();
+  }
+
+  async function borrarRegistroExistente() {
+    if (!selectorRegistroId) return;
+    const tabla = selectorTipo === "cloro" ? "registros_cloracion" : "registros_limpieza";
+    const { error } = await supabase.from(tabla).delete().eq("id", selectorRegistroId);
+    if (error) { console.error(error); alert("No se ha podido borrar en Supabase"); return; }
+    await cargarTodo();
+    cerrarSelector();
+  }
+
+  async function confirmarSelector() {
+    const trabajadorFinal = (selectorTrabajadorManual || selectorTrabajador || "").trim();
+    if (selectorModo === "editar") {
+      if (!selectorRegistroId) return;
+      await actualizarRegistroExistente(trabajadorFinal);
+      return;
+    }
+    if (!trabajadorFinal || !selectorItem || !selectorFecha) return;
+    if (selectorTipo === "cloro") {
+      await registrarCloro(selectorItem, trabajadorFinal, selectorFecha);
+    } else {
+      await registrar(selectorItem, trabajadorFinal, selectorFecha);
+    }
+    cerrarSelector();
   }
 
   const totalPendientes = useMemo(() => {
@@ -851,6 +898,7 @@ export default function Page() {
                 mes={mesHist}
                 isMobile={isMobile}
                 onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
+                onEdit={(reg, item, fecha) => abrirEditorRegistro(reg, item, fecha, "limpieza")}
               />
             )}
 
@@ -863,6 +911,7 @@ export default function Page() {
                 mes={mesHist}
                 isMobile={isMobile}
                 onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
+                onEdit={(reg, item, fecha) => abrirEditorRegistro(reg, item, fecha, "limpieza")}
               />
             )}
 
@@ -875,6 +924,7 @@ export default function Page() {
                 mes={mesHist}
                 isMobile={isMobile}
                 onAdd={(item, fecha) => abrirSelector(item, fecha, "cloro")}
+                onEdit={(reg, item, fecha) => abrirEditorRegistro(reg, item, fecha, "cloro")}
               />
             )}
           </div>
@@ -890,7 +940,7 @@ export default function Page() {
               padding: 20,
               zIndex: 1000
             }}
-            onClick={() => setSelectorAbierto(false)}
+            onClick={cerrarSelector}
           >
             <div
               onClick={(e) => e.stopPropagation()}
@@ -904,7 +954,7 @@ export default function Page() {
               }}
             >
               <div style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff", padding: 20 }}>
-                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>Completar registro</div>
+                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>{selectorModo === "editar" ? "Editar registro" : "Completar registro"}</div>
                 <div style={{ fontSize: 14, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>
                   {selectorItem} · {selectorFecha}
                 </div>
@@ -942,9 +992,9 @@ export default function Page() {
                   </datalist>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: selectorModo === "editar" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10 }}>
                   <button
-                    onClick={() => setSelectorAbierto(false)}
+                    onClick={cerrarSelector}
                     style={{
                       padding: "14px 16px",
                       borderRadius: 16,
@@ -957,9 +1007,25 @@ export default function Page() {
                   >
                     Cancelar
                   </button>
+                  {selectorModo === "editar" && (
+                    <button
+                      onClick={borrarRegistroExistente}
+                      style={{
+                        padding: "14px 16px",
+                        borderRadius: 16,
+                        border: 0,
+                        background: "#111",
+                        color: "#fff",
+                        fontWeight: 800,
+                        cursor: "pointer"
+                      }}
+                    >
+                      Borrar
+                    </button>
+                  )}
                   <button
                     onClick={confirmarSelector}
-                    disabled={!(selectorTrabajador || selectorTrabajadorManual.trim())}
+                    disabled={selectorModo !== "editar" && !(selectorTrabajador || selectorTrabajadorManual.trim())}
                     style={{
                       padding: "14px 16px",
                       borderRadius: 16,
@@ -968,10 +1034,10 @@ export default function Page() {
                       color: "#fff",
                       fontWeight: 800,
                       cursor: "pointer",
-                      opacity: (selectorTrabajador || selectorTrabajadorManual.trim()) ? 1 : 0.7
+                      opacity: (selectorModo === "editar" || selectorTrabajador || selectorTrabajadorManual.trim()) ? 1 : 0.7
                     }}
                   >
-                    Guardar
+                    {selectorModo === "editar" ? "Guardar cambios" : "Guardar"}
                   </button>
                 </div>
               </div>
