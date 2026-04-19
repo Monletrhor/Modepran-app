@@ -246,8 +246,8 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                       style={{
                         border: 0,
                         borderRight: "1px solid #eef2f7",
-                        background: reg ? (reg.retroactivo ? "#fff7ed" : "#dcfce7") : "#fff",
-                        color: reg ? (reg.retroactivo ? "#1f2937" : "#166534") : "#94a3b8",
+                        background: reg ? "#dcfce7" : "#fff",
+                        color: reg ? "#166534" : "#94a3b8",
                         minHeight: 64,
                         cursor: reg ? "default" : "pointer",
                         padding: 4,
@@ -259,8 +259,8 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
                     >
                       {reg ? (
                         <>
-                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: reg.retroactivo ? "#b45309" : "#166534" }}>
-                            {reg.retroactivo ? "R" : "✔"}
+                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: "#166534" }}>
+                            ✔
                           </div>
                           <div style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.1, textAlign: "center", color: "#111827" }}>
                             {workerShort(reg.trabajador)}
@@ -280,7 +280,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
-          Verde = hecho · Naranja = retroactivo · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
+          Verde = hecho · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
         </div>
       </div>
     </Card>
@@ -319,6 +319,7 @@ export default function Page() {
   const [protocoloCloro, setProtocoloCloro] = useState("");
   const [trabajadorMasivoGatos, setTrabajadorMasivoGatos] = useState("");
   const [trabajadorMasivoGatosManual, setTrabajadorMasivoGatosManual] = useState("");
+  const [selectorMarcarTodasGatos, setSelectorMarcarTodasGatos] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -459,11 +460,20 @@ export default function Page() {
   async function registrarTodasLasZonasGatos() {
     const trabajadorFinal = (trabajadorMasivoGatosManual || trabajadorMasivoGatos || "").trim();
     if (!trabajadorFinal) return;
+    await registrarMultiplesZonasGatos(trabajadorFinal, ahora().fecha, limpiezaHoy, false);
+    setTrabajadorMasivoGatos("");
+    setTrabajadorMasivoGatosManual("");
+  }
 
-    const zonasPendientes = Object.values(zonasGatos).flat().filter((zona) => !limpiezaHoy[zona]);
+  async function registrarMultiplesZonasGatos(trabajadorFinal, fechaTrabajo, mapaExistente = null, usarRetroactivo = false) {
+    const mapa = mapaExistente || {};
+    const zonasPendientes = Object.values(zonasGatos).flat().filter((zona) => {
+      return !Object.values(mapa).some((registro) => registro?.zona === zona || mapa[zona]);
+    });
+
     if (!zonasPendientes.length) {
       alert("No hay zonas de gatos pendientes para marcar.");
-      return;
+      return false;
     }
 
     const tiempo = ahora();
@@ -472,21 +482,20 @@ export default function Page() {
       grupo: zona.startsWith("Cuarentena") ? "Cuarentenas" : "Jaulones",
       zona,
       trabajador: trabajadorFinal,
-      fecha: tiempo.fecha,
+      fecha: fechaTrabajo,
       hora: tiempo.hora,
-      retroactivo: false,
+      retroactivo: !!usarRetroactivo,
     }));
 
     const { error } = await supabase.from("registros_limpieza").insert(filas);
     if (error) {
       console.error(error);
       alert("No se han podido guardar las zonas de gatos en Supabase");
-      return;
+      return false;
     }
 
-    setTrabajadorMasivoGatos("");
-    setTrabajadorMasivoGatosManual("");
     await cargarTodo();
+    return true;
   }
 
   function abrirSelector(item, fecha, tipo) {
@@ -495,13 +504,22 @@ export default function Page() {
     setSelectorTipo(tipo);
     setSelectorTrabajador("");
     setSelectorTrabajadorManual("");
+    setSelectorMarcarTodasGatos(false);
     setSelectorAbierto(true);
   }
 
   async function confirmarSelector() {
     const trabajadorFinal = (selectorTrabajadorManual || selectorTrabajador || "").trim();
     if (!trabajadorFinal || !selectorItem || !selectorFecha) return;
-    if (selectorTipo === "cloro") {
+
+    const esSelectorGatos = Object.values(zonasGatos).flat().includes(selectorItem);
+    if (selectorMarcarTodasGatos && esSelectorGatos) {
+      const fechaObjetivo = normalizeEsDate(selectorFecha);
+      const registrosDelDia = histGatos.filter((r) => normalizeEsDate(r.fecha) === fechaObjetivo);
+      const mapaDia = Object.fromEntries(registrosDelDia.map((r) => [r.zona, r]));
+      const ok = await registrarMultiplesZonasGatos(trabajadorFinal, selectorFecha, mapaDia, true);
+      if (!ok) return;
+    } else if (selectorTipo === "cloro") {
       await registrarCloro(selectorItem, trabajadorFinal, selectorFecha);
     } else {
       await registrar(selectorItem, trabajadorFinal, selectorFecha);
@@ -512,6 +530,7 @@ export default function Page() {
     setSelectorItem("");
     setSelectorFecha("");
     setSelectorTipo("limpieza");
+    setSelectorMarcarTodasGatos(false);
   }
 
   const totalPendientes = useMemo(() => {
@@ -582,6 +601,7 @@ export default function Page() {
   const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
   const zonasPerrosOrdenadas = [...zonasPerros["Zona principal"], ...zonasPerros["Campo Nuevo"]];
   const zonasGatosOrdenadas = [...zonasGatos["Cuarentenas"], ...zonasGatos["Jaulones"]];
+  const selectorEsZonaGatos = zonasGatosOrdenadas.includes(selectorItem);
 
   if (authLoading) {
     return (
@@ -920,7 +940,7 @@ export default function Page() {
                   ))}
                 </div>
                 <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>
-                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Verde = hecho, naranja = retroactivo.
+                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Todo lo completado sale en verde.
                 </div>
               </div>
             </Card>
@@ -1018,6 +1038,18 @@ export default function Page() {
                     style={inputStyle}
                   />
                 </div>
+
+                {selectorEsZonaGatos && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 16, background: "#f8fafc", padding: "12px 14px", fontWeight: 700, color: "#111827", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectorMarcarTodasGatos}
+                      onChange={(e) => setSelectorMarcarTodasGatos(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    Marcar todas las zonas de gatos pendientes de ese día
+                  </label>
+                )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <button
