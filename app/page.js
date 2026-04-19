@@ -47,25 +47,6 @@ function normalizeEsDate(str) {
 function esFromParts(y,m,d){
   return normalizeEsDate(`${d}/${m}/${y}`);
 }
-function parseEsDate(str) {
-  const normalized = normalizeEsDate(str);
-  const parts = normalized.split("/");
-  if (parts.length !== 3) return null;
-  const [d, m, y] = parts.map(Number);
-  if (!d || !m || !y) return null;
-  return new Date(y, m - 1, d);
-}
-function compareRowsByFecha(a, b) {
-  const dateA = parseEsDate(a.fecha);
-  const dateB = parseEsDate(b.fecha);
-  const timeA = dateA ? dateA.getTime() : 0;
-  const timeB = dateB ? dateB.getTime() : 0;
-  if (timeA !== timeB) return timeA - timeB;
-  const zonaA = String(a.zona || a.deposito || "");
-  const zonaB = String(b.zona || b.deposito || "");
-  if (zonaA !== zonaB) return zonaA.localeCompare(zonaB, 'es');
-  return String(a.hora || "").localeCompare(String(b.hora || ""), 'es');
-}
 function getDaysInMonth(year, monthIndex){
   return new Date(year, monthIndex + 1, 0).getDate();
 }
@@ -207,6 +188,7 @@ function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = 
           <div><strong>Trabajador:</strong> {registro.trabajador}</div>
           <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
           <div><strong>Hora:</strong> {registro.hora}</div>
+          {registro.retroactivo && <div style={{ color: "#b45309", fontWeight: 700 }}>Registro retroactivo</div>}
         </div>
       )}
     </div>
@@ -229,7 +211,7 @@ function MonthYearPicker({ mes, setMes, anio, setAnio }) {
   );
 }
 
-function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd, onEdit }) {
+function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
   const daysInMonth = getDaysInMonth(anio, mes);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
 
@@ -259,15 +241,15 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd, onEdit 
                   return (
                     <button
                       key={d}
-                      title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}` : `Añadir ${item} - ${fecha}`}
-                      onClick={() => { if (reg) { onEdit && onEdit(reg, item, fecha); } else { onAdd(item, fecha); } }}
+                      title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}${reg.retroactivo ? '\nRetroactivo' : ''}` : `Añadir ${item} - ${fecha}`}
+                      onClick={() => { if (!reg) { onAdd(item, fecha); } }}
                       style={{
                         border: 0,
                         borderRight: "1px solid #eef2f7",
-                        background: reg ? "#dcfce7" : "#fff",
-                        color: reg ? "#166534" : "#94a3b8",
+                        background: reg ? (reg.retroactivo ? "#fff7ed" : "#dcfce7") : "#fff",
+                        color: reg ? (reg.retroactivo ? "#1f2937" : "#166534") : "#94a3b8",
                         minHeight: 64,
-                        cursor: "pointer",
+                        cursor: reg ? "default" : "pointer",
                         padding: 4,
                         display: "grid",
                         alignContent: "center",
@@ -277,8 +259,8 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd, onEdit 
                     >
                       {reg ? (
                         <>
-                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: "#166534" }}>
-                            ✔
+                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: reg.retroactivo ? "#b45309" : "#166534" }}>
+                            {reg.retroactivo ? "R" : "✔"}
                           </div>
                           <div style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.1, textAlign: "center", color: "#111827" }}>
                             {workerShort(reg.trabajador)}
@@ -298,7 +280,7 @@ function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd, onEdit 
           </div>
         </div>
         <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
-          Verde = hecho · En cada celda se ve trabajador y fecha. Pulsa una celda para completar, cambiar o borrar el trabajador.
+          Verde = hecho · Naranja = retroactivo · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
         </div>
       </div>
     </Card>
@@ -332,11 +314,11 @@ export default function Page() {
   const [selectorItem, setSelectorItem] = useState("");
   const [selectorFecha, setSelectorFecha] = useState("");
   const [selectorTipo, setSelectorTipo] = useState("limpieza");
-  const [selectorModo, setSelectorModo] = useState("crear");
-  const [selectorRegistroId, setSelectorRegistroId] = useState(null);
   const [protocoloPerros, setProtocoloPerros] = useState("");
   const [protocoloGatos, setProtocoloGatos] = useState("");
   const [protocoloCloro, setProtocoloCloro] = useState("");
+  const [trabajadorMasivoGatos, setTrabajadorMasivoGatos] = useState("");
+  const [trabajadorMasivoGatosManual, setTrabajadorMasivoGatosManual] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -474,74 +456,62 @@ export default function Page() {
     await cargarTodo();
   }
 
-  function cerrarSelector() {
-    setSelectorAbierto(false);
-    setSelectorTrabajador("");
-    setSelectorTrabajadorManual("");
-    setSelectorItem("");
-    setSelectorFecha("");
-    setSelectorTipo("limpieza");
-    setSelectorModo("crear");
-    setSelectorRegistroId(null);
+  async function registrarTodasLasZonasGatos() {
+    const trabajadorFinal = (trabajadorMasivoGatosManual || trabajadorMasivoGatos || "").trim();
+    if (!trabajadorFinal) return;
+
+    const zonasPendientes = Object.values(zonasGatos).flat().filter((zona) => !limpiezaHoy[zona]);
+    if (!zonasPendientes.length) {
+      alert("No hay zonas de gatos pendientes para marcar.");
+      return;
+    }
+
+    const tiempo = ahora();
+    const filas = zonasPendientes.map((zona) => ({
+      categoria: "gatos",
+      grupo: zona.startsWith("Cuarentena") ? "Cuarentenas" : "Jaulones",
+      zona,
+      trabajador: trabajadorFinal,
+      fecha: tiempo.fecha,
+      hora: tiempo.hora,
+      retroactivo: false,
+    }));
+
+    const { error } = await supabase.from("registros_limpieza").insert(filas);
+    if (error) {
+      console.error(error);
+      alert("No se han podido guardar las zonas de gatos en Supabase");
+      return;
+    }
+
+    setTrabajadorMasivoGatos("");
+    setTrabajadorMasivoGatosManual("");
+    await cargarTodo();
   }
 
   function abrirSelector(item, fecha, tipo) {
     setSelectorItem(item);
     setSelectorFecha(fecha);
     setSelectorTipo(tipo);
-    setSelectorModo("crear");
-    setSelectorRegistroId(null);
     setSelectorTrabajador("");
     setSelectorTrabajadorManual("");
     setSelectorAbierto(true);
   }
 
-  function abrirEditorRegistro(registro, item, fecha, tipo) {
-    const trabajadorActual = String(registro?.trabajador || "").trim();
-    const trabajadorPrefijado = trabajadores.includes(trabajadorActual) ? trabajadorActual : "";
-    setSelectorItem(item || registro?.zona || registro?.deposito || "");
-    setSelectorFecha(fecha || registro?.fecha || "");
-    setSelectorTipo(tipo);
-    setSelectorModo("editar");
-    setSelectorRegistroId(registro?.id ?? null);
-    setSelectorTrabajador(trabajadorPrefijado);
-    setSelectorTrabajadorManual(trabajadorPrefijado ? "" : trabajadorActual);
-    setSelectorAbierto(true);
-  }
-
-  async function actualizarRegistroExistente(trabajadorFinal) {
-    if (!selectorRegistroId) return;
-    const tabla = selectorTipo === "cloro" ? "registros_cloracion" : "registros_limpieza";
-    const payload = { trabajador: trabajadorFinal || "" };
-    const { error } = await supabase.from(tabla).update(payload).eq("id", selectorRegistroId);
-    if (error) { console.error(error); alert("No se ha podido actualizar en Supabase"); return; }
-    await cargarTodo();
-    cerrarSelector();
-  }
-
-  async function borrarRegistroExistente() {
-    if (!selectorRegistroId) return;
-    const tabla = selectorTipo === "cloro" ? "registros_cloracion" : "registros_limpieza";
-    const { error } = await supabase.from(tabla).delete().eq("id", selectorRegistroId);
-    if (error) { console.error(error); alert("No se ha podido borrar en Supabase"); return; }
-    await cargarTodo();
-    cerrarSelector();
-  }
-
   async function confirmarSelector() {
     const trabajadorFinal = (selectorTrabajadorManual || selectorTrabajador || "").trim();
-    if (selectorModo === "editar") {
-      if (!selectorRegistroId) return;
-      await actualizarRegistroExistente(trabajadorFinal);
-      return;
-    }
     if (!trabajadorFinal || !selectorItem || !selectorFecha) return;
     if (selectorTipo === "cloro") {
       await registrarCloro(selectorItem, trabajadorFinal, selectorFecha);
     } else {
       await registrar(selectorItem, trabajadorFinal, selectorFecha);
     }
-    cerrarSelector();
+    setSelectorAbierto(false);
+    setSelectorTrabajador("");
+    setSelectorTrabajadorManual("");
+    setSelectorItem("");
+    setSelectorFecha("");
+    setSelectorTipo("limpieza");
   }
 
   const totalPendientes = useMemo(() => {
@@ -575,16 +545,15 @@ export default function Page() {
     return list.filter((r) => {
       const [_, m, y] = normalizeEsDate(r.fecha).split("/");
       return Number(m) - 1 === mesHist && Number(y) === anioHist;
-    }).sort(compareRowsByFecha);
+    }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }
   const perrosMes = filtrarMes(histPerros);
   const gatosMes = filtrarMes(histGatos);
   const cloroMes = filtrarMes(histCloro);
 
   function exportarListado(titulo, filas, columnas, periodo) {
-    const filasOrdenadas = [...filas].sort(compareRowsByFecha);
-    const body = filasOrdenadas.length
-      ? filasOrdenadas.map((row) => `<tr>${columnas.map((c) => `<td>${escapeHtml(String(row[c.key] ?? ""))}</td>`).join("")}</tr>`).join("")
+    const body = filas.length
+      ? filas.map((row) => `<tr>${columnas.map((c) => `<td>${escapeHtml(String(row[c.key] ?? ""))}</td>`).join("")}</tr>`).join("")
       : `<tr><td colspan="${columnas.length}">No hay registros.</td></tr>`;
     abrirVentanaImpresion(titulo, `
       <h1>${escapeHtml(titulo)}</h1>
@@ -596,37 +565,23 @@ export default function Page() {
 
   function exportarMes(tipo) {
     const periodo = `${meses[mesHist]} ${anioHist}`;
-    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
   }
   function exportarAnio(tipo) {
     const periodo = `Año ${anioHist}`;
     const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
     const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
-    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
   }
 
   const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
-  const zonasPerrosPantalla = infecciososPerros
-    ? { ...zonasPerros, "Infecciosos": ["Infecciosos Perros"] }
-    : zonasPerros;
-  const zonasGatosPantalla = infecciososGatos
-    ? { ...zonasGatos, "Infecciosos": ["Infecciosos Gatos"] }
-    : zonasGatos;
-  const zonasPerrosOrdenadas = [
-    ...zonasPerros["Zona principal"],
-    ...zonasPerros["Campo Nuevo"],
-    ...((infecciososPerros || histPerros.some((r) => r.zona === "Infecciosos Perros")) ? ["Infecciosos Perros"] : [])
-  ];
-  const zonasGatosOrdenadas = [
-    ...zonasGatos["Cuarentenas"],
-    ...zonasGatos["Jaulones"],
-    ...((infecciososGatos || histGatos.some((r) => r.zona === "Infecciosos Gatos")) ? ["Infecciosos Gatos"] : [])
-  ];
+  const zonasPerrosOrdenadas = [...zonasPerros["Zona principal"], ...zonasPerros["Campo Nuevo"]];
+  const zonasGatosOrdenadas = [...zonasGatos["Cuarentenas"], ...zonasGatos["Jaulones"]];
 
   if (authLoading) {
     return (
@@ -774,7 +729,7 @@ export default function Page() {
                 <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososPerros} onChange={(e) => setInfecciososPerros(e.target.checked)} />
               </div>
             </Card>
-            {Object.entries(zonasPerrosPantalla).map(([grupo, lista]) => (
+            {Object.entries(zonasPerros).map(([grupo, lista]) => (
               <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
                 <SectionTitle>{grupo}</SectionTitle>
                 <div style={{ display: "grid", gap: 14 }}>
@@ -783,6 +738,20 @@ export default function Page() {
               </div></Card>
             ))}
 
+            {infecciososPerros && (
+              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
+                <div style={{ padding: isMobile ? 16 : 24 }}>
+                  <SectionTitle>Infecciosos Perros</SectionTitle>
+                  <RegistroRow
+                    title="Limpieza infecciosos perros"
+                    registro={limpiezaHoy["Infecciosos Perros"]}
+                    onSelect={(v) => registrar("Infecciosos Perros", v)}
+                    disabled={!!limpiezaHoy["Infecciosos Perros"]}
+                    bloqueado={!!limpiezaHoy["Infecciosos Perros"]}
+                  />
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
@@ -799,13 +768,66 @@ export default function Page() {
                 />
               </div>
             </Card>
+
+            <Card style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff" }}>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 12 }}>
+                <div>
+                  <p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Marcado rápido</p>
+                  <p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>Aplicar el mismo trabajador a todas las zonas de gatos</p>
+                  <p style={{ margin: "8px 0 0", opacity: .82, fontSize: 14 }}>Marca de una vez todas las zonas normales de gatos. No toca infecciosos.</p>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#fff" }}>Trabajador prefijado</label>
+                  <select
+                    value={trabajadorMasivoGatos}
+                    onChange={(e) => setTrabajadorMasivoGatos(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Seleccionar trabajador</option>
+                    {trabajadores.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#fff" }}>O escribir trabajador manualmente</label>
+                  <input
+                    type="text"
+                    value={trabajadorMasivoGatosManual}
+                    onChange={(e) => setTrabajadorMasivoGatosManual(e.target.value)}
+                    placeholder="Escribe aquí el nombre si no está en la lista"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <button
+                  onClick={registrarTodasLasZonasGatos}
+                  disabled={!(trabajadorMasivoGatos || trabajadorMasivoGatosManual.trim())}
+                  style={{
+                    padding: "16px 18px",
+                    borderRadius: 18,
+                    border: 0,
+                    background: "#e84d57",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    opacity: (trabajadorMasivoGatos || trabajadorMasivoGatosManual.trim()) ? 1 : 0.7
+                  }}
+                >
+                  Marcar todas las zonas de gatos
+                </button>
+              </div>
+            </Card>
             <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
                 <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos gatos?</p></div>
                 <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososGatos} onChange={(e) => setInfecciososGatos(e.target.checked)} />
               </div>
             </Card>
-            {Object.entries(zonasGatosPantalla).map(([grupo, lista]) => (
+            {Object.entries(zonasGatos).map(([grupo, lista]) => (
               <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
                 <SectionTitle>{grupo}</SectionTitle>
                 <div style={{ display: "grid", gap: 14 }}>
@@ -814,6 +836,20 @@ export default function Page() {
               </div></Card>
             ))}
 
+            {infecciososGatos && (
+              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
+                <div style={{ padding: isMobile ? 16 : 24 }}>
+                  <SectionTitle>Infecciosos Gatos</SectionTitle>
+                  <RegistroRow
+                    title="Limpieza infecciosos gatos"
+                    registro={limpiezaHoy["Infecciosos Gatos"]}
+                    onSelect={(v) => registrar("Infecciosos Gatos", v)}
+                    disabled={!!limpiezaHoy["Infecciosos Gatos"]}
+                    bloqueado={!!limpiezaHoy["Infecciosos Gatos"]}
+                  />
+                </div>
+              </Card>
+            )}
           </div>
         )}
 
@@ -884,7 +920,7 @@ export default function Page() {
                   ))}
                 </div>
                 <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>
-                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Todo lo completado aparece marcado en verde.
+                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Verde = hecho, naranja = retroactivo.
                 </div>
               </div>
             </Card>
@@ -898,7 +934,6 @@ export default function Page() {
                 mes={mesHist}
                 isMobile={isMobile}
                 onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
-                onEdit={(reg, item, fecha) => abrirEditorRegistro(reg, item, fecha, "limpieza")}
               />
             )}
 
@@ -911,7 +946,6 @@ export default function Page() {
                 mes={mesHist}
                 isMobile={isMobile}
                 onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
-                onEdit={(reg, item, fecha) => abrirEditorRegistro(reg, item, fecha, "limpieza")}
               />
             )}
 
@@ -924,7 +958,6 @@ export default function Page() {
                 mes={mesHist}
                 isMobile={isMobile}
                 onAdd={(item, fecha) => abrirSelector(item, fecha, "cloro")}
-                onEdit={(reg, item, fecha) => abrirEditorRegistro(reg, item, fecha, "cloro")}
               />
             )}
           </div>
@@ -940,7 +973,7 @@ export default function Page() {
               padding: 20,
               zIndex: 1000
             }}
-            onClick={cerrarSelector}
+            onClick={() => setSelectorAbierto(false)}
           >
             <div
               onClick={(e) => e.stopPropagation()}
@@ -954,7 +987,7 @@ export default function Page() {
               }}
             >
               <div style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff", padding: 20 }}>
-                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>{selectorModo === "editar" ? "Editar registro" : "Completar registro"}</div>
+                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>Completar registro</div>
                 <div style={{ fontSize: 14, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>
                   {selectorItem} · {selectorFecha}
                 </div>
@@ -979,22 +1012,16 @@ export default function Page() {
                   <label style={{ fontWeight: 700, color: "#222" }}>O escribir trabajador manualmente</label>
                   <input
                     type="text"
-                    list="trabajadores-historico"
                     value={selectorTrabajadorManual}
                     onChange={(e) => setSelectorTrabajadorManual(e.target.value)}
                     placeholder="Escribe aquí el nombre si no está en la lista"
                     style={inputStyle}
                   />
-                  <datalist id="trabajadores-historico">
-                    {trabajadores.map((t) => (
-                      <option key={`manual-${t}`} value={t} />
-                    ))}
-                  </datalist>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: selectorModo === "editar" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <button
-                    onClick={cerrarSelector}
+                    onClick={() => setSelectorAbierto(false)}
                     style={{
                       padding: "14px 16px",
                       borderRadius: 16,
@@ -1007,25 +1034,9 @@ export default function Page() {
                   >
                     Cancelar
                   </button>
-                  {selectorModo === "editar" && (
-                    <button
-                      onClick={borrarRegistroExistente}
-                      style={{
-                        padding: "14px 16px",
-                        borderRadius: 16,
-                        border: 0,
-                        background: "#111",
-                        color: "#fff",
-                        fontWeight: 800,
-                        cursor: "pointer"
-                      }}
-                    >
-                      Borrar
-                    </button>
-                  )}
                   <button
                     onClick={confirmarSelector}
-                    disabled={selectorModo !== "editar" && !(selectorTrabajador || selectorTrabajadorManual.trim())}
+                    disabled={!(selectorTrabajador || selectorTrabajadorManual.trim())}
                     style={{
                       padding: "14px 16px",
                       borderRadius: 16,
@@ -1034,10 +1045,10 @@ export default function Page() {
                       color: "#fff",
                       fontWeight: 800,
                       cursor: "pointer",
-                      opacity: (selectorModo === "editar" || selectorTrabajador || selectorTrabajadorManual.trim()) ? 1 : 0.7
+                      opacity: (selectorTrabajador || selectorTrabajadorManual.trim()) ? 1 : 0.7
                     }}
                   >
-                    {selectorModo === "editar" ? "Guardar cambios" : "Guardar"}
+                    Guardar
                   </button>
                 </div>
               </div>
