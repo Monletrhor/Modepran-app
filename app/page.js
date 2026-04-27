@@ -357,6 +357,7 @@ export default function Page() {
   const [trabajadorMasivoGatosManual, setTrabajadorMasivoGatosManual] = useState("");
   const [selectorMarcarTodasGatos, setSelectorMarcarTodasGatos] = useState(false);
   const [autoAsignando, setAutoAsignando] = useState(false);
+  const [protocolosCargados, setProtocolosCargados] = useState(false);
   const autoAsignacionKeyRef = useRef("");
 
   useEffect(() => {
@@ -413,22 +414,23 @@ export default function Page() {
     setProtocoloPerros(localStorage.getItem("modepran_protocolo_perros") || "");
     setProtocoloGatos(localStorage.getItem("modepran_protocolo_gatos") || "");
     setProtocoloCloro(localStorage.getItem("modepran_protocolo_cloro") || "");
+    setProtocolosCargados(true);
   }, []);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !protocolosCargados) return;
     localStorage.setItem("modepran_protocolo_perros", protocoloPerros);
-  }, [protocoloPerros]);
+  }, [protocoloPerros, protocolosCargados]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !protocolosCargados) return;
     localStorage.setItem("modepran_protocolo_gatos", protocoloGatos);
-  }, [protocoloGatos]);
+  }, [protocoloGatos, protocolosCargados]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !protocolosCargados) return;
     localStorage.setItem("modepran_protocolo_cloro", protocoloCloro);
-  }, [protocoloCloro]);
+  }, [protocoloCloro, protocolosCargados]);
 
   async function cargarTodo() {
     try {
