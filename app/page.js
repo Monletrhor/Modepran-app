@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -43,6 +43,15 @@ function normalizeEsDate(str) {
   if (parts.length !== 3) return str;
   const [d,m,y] = parts;
   return `${Number(d)}/${Number(m)}/${Number(y)}`;
+}
+function fechaSortValue(str) {
+  const parts = normalizeEsDate(str).split("/");
+  if (parts.length !== 3) return 0;
+  const [d, m, y] = parts.map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+function ordenarPorFechaTrabajo(a, b) {
+  return (fechaSortValue(a.fecha) - fechaSortValue(b.fecha)) || String(a.zona || a.deposito || "").localeCompare(String(b.zona || b.deposito || ""));
 }
 function esFromParts(y,m,d){
   return normalizeEsDate(`${d}/${m}/${y}`);
@@ -348,6 +357,7 @@ export default function Page() {
   const [trabajadorMasivoGatosManual, setTrabajadorMasivoGatosManual] = useState("");
   const [selectorMarcarTodasGatos, setSelectorMarcarTodasGatos] = useState(false);
   const [autoAsignando, setAutoAsignando] = useState(false);
+  const autoAsignacionKeyRef = useRef("");
 
   useEffect(() => {
     let mounted = true;
@@ -529,10 +539,7 @@ export default function Page() {
   async function asignarLimpiezaAutomaticaHoy() {
     if (autoAsignando) return;
     const disponibles = trabajadoresDisponiblesParaFecha(new Date());
-    if (!disponibles.length) {
-      alert("No hay trabajadores disponibles configurados para hoy.");
-      return;
-    }
+    if (!disponibles.length) return;
 
     const tiempo = ahora();
     const filas = [];
@@ -557,10 +564,7 @@ export default function Page() {
       filas.push({ categoria: "gatos", grupo, zona, trabajador: trabajadorAleatorio(disponibles), fecha: tiempo.fecha, hora: tiempo.hora, retroactivo: false });
     });
 
-    if (!filas.length) {
-      alert("No quedan zonas pendientes para asignar hoy.");
-      return;
-    }
+    if (!filas.length) return;
 
     setAutoAsignando(true);
     const { error } = await supabase.from("registros_limpieza").insert(filas);
@@ -568,7 +572,6 @@ export default function Page() {
 
     if (error) {
       console.error(error);
-      alert("No se ha podido hacer la asignación automática en Supabase");
       return;
     }
 
@@ -616,6 +619,23 @@ export default function Page() {
     return perros + gatos + (infecciososPerros && !limpiezaHoy["Infecciosos Perros"] ? 1 : 0) + (infecciososGatos && !limpiezaHoy["Infecciosos Gatos"] ? 1 : 0);
   }, [limpiezaHoy, infecciososPerros, infecciososGatos]);
 
+  useEffect(() => {
+    if (!session || authLoading || autoAsignando) return;
+    const hoy = normalizeEsDate(new Date().toLocaleDateString("es-ES"));
+    const pendientes = [
+      ...Object.values(zonasPerros).flat(),
+      ...Object.values(zonasGatos).flat(),
+      ...(infecciososPerros ? ["Infecciosos Perros"] : []),
+      ...(infecciososGatos ? ["Infecciosos Gatos"] : []),
+    ].filter((zona) => !limpiezaHoy[zona]);
+    if (!pendientes.length) return;
+
+    const key = hoy + "-" + pendientes.slice().sort().join("|") + "-" + infecciososPerros + "-" + infecciososGatos;
+    if (autoAsignacionKeyRef.current === key) return;
+    autoAsignacionKeyRef.current = key;
+    asignarLimpiezaAutomaticaHoy();
+  }, [session, authLoading, limpiezaHoy, infecciososPerros, infecciososGatos, autoAsignando]);
+
   const cloracionMesActual = useMemo(() => {
     const hoy = new Date();
     const mes = hoy.getMonth() + 1;
@@ -641,7 +661,7 @@ export default function Page() {
     return list.filter((r) => {
       const [_, m, y] = normalizeEsDate(r.fecha).split("/");
       return Number(m) - 1 === mesHist && Number(y) === anioHist;
-    }).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    }).sort(ordenarPorFechaTrabajo);
   }
   const perrosMes = filtrarMes(histPerros);
   const gatosMes = filtrarMes(histGatos);
@@ -661,18 +681,18 @@ export default function Page() {
 
   function exportarMes(tipo) {
     const periodo = `${meses[mesHist]} ${anioHist}`;
-    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
   }
   function exportarAnio(tipo) {
     const periodo = `Año ${anioHist}`;
-    const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
-    const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
-    const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist);
-    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
-    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"},{key:"retroactivo",label:"Retroactivo"}], periodo);
+    const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist).sort(ordenarPorFechaTrabajo);
+    const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist).sort(ordenarPorFechaTrabajo);
+    const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist).sort(ordenarPorFechaTrabajo);
+    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
   }
 
   const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
@@ -807,27 +827,6 @@ export default function Page() {
           </div>
         )}
 
-        {(tab === "perros" || tab === "gatos") && (
-          <Card style={{ background: "linear-gradient(90deg,#064e3b,#047857)", color: "#fff" }}>
-            <div style={{ padding: isMobile ? 16 : 20, display: "grid", gap: 10 }}>
-              <div>
-                <p style={{ margin: 0, opacity: .86, fontSize: 14, fontWeight: 800 }}>Asignación automática diaria</p>
-                <p style={{ margin: "6px 0 0", fontSize: isMobile ? 20 : 23, fontWeight: 900 }}>Rellenar zonas pendientes con trabajadores disponibles</p>
-                <p style={{ margin: "8px 0 0", opacity: .86, fontSize: 14, lineHeight: 1.45 }}>Respeta los días libres configurados y asigna nombres aleatorios. Tú luego revisas las zonas como siempre. No toca cloración.</p>
-              </div>
-              <div style={{ borderRadius: 16, background: "rgba(255,255,255,0.12)", padding: "10px 12px", fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
-                Disponibles hoy: {trabajadoresDisponiblesParaFecha(new Date()).map(workerShort).join(", ")}
-              </div>
-              <button
-                onClick={asignarLimpiezaAutomaticaHoy}
-                disabled={autoAsignando || totalPendientes === 0}
-                style={{ padding: "15px 18px", borderRadius: 18, border: 0, background: "#fff", color: "#064e3b", fontWeight: 900, fontSize: 16, cursor: autoAsignando || totalPendientes === 0 ? "not-allowed" : "pointer", opacity: autoAsignando || totalPendientes === 0 ? .65 : 1 }}
-              >
-                {autoAsignando ? "Asignando..." : "Asignar automáticamente limpieza de hoy"}
-              </button>
-            </div>
-          </Card>
-        )}
 
         {tab === "perros" && (
           <div style={{ display: "grid", gap: 18 }}>
