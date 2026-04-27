@@ -10,7 +10,7 @@ const supabase = createClient(
 const trabajadores = [
   "Maria penades","Joana todo","Martina simova","Mireia soro","Elena Palau",
   "Katya urias","Kenia urias","David Valls","Johana tavera","Xujey Suarez",
-  "Rafa Sales","Jenny Martinez","Trini"
+  "Rafa Sales","Jenny Martinez","Trini","Jorge"
 ];
 const zonasPerros = {
   "Zona principal": ["INVERNADERO", "RESIDENCIA", "FASE 1", "FASE 2", "FASE 3"],
@@ -20,7 +20,7 @@ const zonasGatos = {
   "Cuarentenas": ["Cuarentena 1", "Cuarentena 2"],
   "Jaulones": ["Jaulón 1", "Jaulón 2", "Jaulón 3", "Jaulón 4", "Jaulón 5", "Jaulón 6"],
 };
-const depositos = Array.from({ length: 12 }, (_, i) => `Depósito ${i + 1}`);
+const depositos = Array.from({ length: 20 }, (_, i) => `Depósito ${i + 1}`);
 const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 function ahora() {
@@ -58,6 +58,34 @@ function workerShort(name) {
   const parts = String(name).trim().split(/\s+/);
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${parts[1]}`;
+}
+
+function normalizarTrabajadorNombre(nombre) {
+  return String(nombre || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+const descansosTrabajadores = {
+  0: ["David Valls", "Johana tavera", "Trini", "Jorge"],
+  1: ["Maria penades", "Joana todo", "Xujey Suarez"],
+  2: ["Maria penades", "Joana todo", "Xujey Suarez"],
+  3: ["Martina simova", "Mireia soro", "Rafa Sales"],
+  4: ["Martina simova", "Mireia soro", "Rafa Sales"],
+  5: ["Elena Palau", "Katya urias", "Jenny Martinez"],
+  6: ["Elena Palau", "Katya urias", "Jenny Martinez"],
+};
+
+function trabajadoresDisponiblesParaFecha(date = new Date()) {
+  const descansan = new Set((descansosTrabajadores[date.getDay()] || []).map(normalizarTrabajadorNombre));
+  return trabajadores.filter((t) => !descansan.has(normalizarTrabajadorNombre(t)));
+}
+
+function trabajadorAleatorio(lista) {
+  if (!lista.length) return "";
+  return lista[Math.floor(Math.random() * lista.length)];
 }
 function abrirVentanaImpresion(titulo, contenido) {
   const win = window.open("", "_blank", "width=1200,height=900");
@@ -188,7 +216,6 @@ function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = 
           <div><strong>Trabajador:</strong> {registro.trabajador}</div>
           <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
           <div><strong>Hora:</strong> {registro.hora}</div>
-          {registro.retroactivo && <div style={{ color: "#b45309", fontWeight: 700 }}>Registro retroactivo</div>}
         </div>
       )}
     </div>
@@ -320,6 +347,7 @@ export default function Page() {
   const [trabajadorMasivoGatos, setTrabajadorMasivoGatos] = useState("");
   const [trabajadorMasivoGatosManual, setTrabajadorMasivoGatosManual] = useState("");
   const [selectorMarcarTodasGatos, setSelectorMarcarTodasGatos] = useState(false);
+  const [autoAsignando, setAutoAsignando] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -496,6 +524,55 @@ export default function Page() {
 
     await cargarTodo();
     return true;
+  }
+
+  async function asignarLimpiezaAutomaticaHoy() {
+    if (autoAsignando) return;
+    const disponibles = trabajadoresDisponiblesParaFecha(new Date());
+    if (!disponibles.length) {
+      alert("No hay trabajadores disponibles configurados para hoy.");
+      return;
+    }
+
+    const tiempo = ahora();
+    const filas = [];
+    const todasPerros = Object.values(zonasPerros).flat();
+    const todasGatos = Object.values(zonasGatos).flat();
+    if (infecciososPerros) todasPerros.push("Infecciosos Perros");
+    if (infecciososGatos) todasGatos.push("Infecciosos Gatos");
+
+    todasPerros.forEach((zona) => {
+      if (limpiezaHoy[zona]) return;
+      let grupo = "Zona principal";
+      if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
+      if (zona === "Infecciosos Perros") grupo = "Infecciosos";
+      filas.push({ categoria: "perros", grupo, zona, trabajador: trabajadorAleatorio(disponibles), fecha: tiempo.fecha, hora: tiempo.hora, retroactivo: false });
+    });
+
+    todasGatos.forEach((zona) => {
+      if (limpiezaHoy[zona]) return;
+      let grupo = "Jaulones";
+      if (zona.startsWith("Cuarentena")) grupo = "Cuarentenas";
+      if (zona === "Infecciosos Gatos") grupo = "Infecciosos";
+      filas.push({ categoria: "gatos", grupo, zona, trabajador: trabajadorAleatorio(disponibles), fecha: tiempo.fecha, hora: tiempo.hora, retroactivo: false });
+    });
+
+    if (!filas.length) {
+      alert("No quedan zonas pendientes para asignar hoy.");
+      return;
+    }
+
+    setAutoAsignando(true);
+    const { error } = await supabase.from("registros_limpieza").insert(filas);
+    setAutoAsignando(false);
+
+    if (error) {
+      console.error(error);
+      alert("No se ha podido hacer la asignación automática en Supabase");
+      return;
+    }
+
+    await cargarTodo();
   }
 
   function abrirSelector(item, fecha, tipo) {
@@ -728,6 +805,28 @@ export default function Page() {
           <div style={{ borderRadius: 20, background: totalPendientes === 0 ? "#064e3b" : "#3a2d00", color: "#fff", padding: isMobile ? "14px 16px" : "14px 18px", fontWeight: 800, fontSize: isMobile ? 15 : 16 }}>
             {totalPendientes === 0 ? "Limpieza al día. No quedan tareas pendientes." : `Pendientes actuales de limpieza: ${totalPendientes}`}
           </div>
+        )}
+
+        {(tab === "perros" || tab === "gatos") && (
+          <Card style={{ background: "linear-gradient(90deg,#064e3b,#047857)", color: "#fff" }}>
+            <div style={{ padding: isMobile ? 16 : 20, display: "grid", gap: 10 }}>
+              <div>
+                <p style={{ margin: 0, opacity: .86, fontSize: 14, fontWeight: 800 }}>Asignación automática diaria</p>
+                <p style={{ margin: "6px 0 0", fontSize: isMobile ? 20 : 23, fontWeight: 900 }}>Rellenar zonas pendientes con trabajadores disponibles</p>
+                <p style={{ margin: "8px 0 0", opacity: .86, fontSize: 14, lineHeight: 1.45 }}>Respeta los días libres configurados y asigna nombres aleatorios. Tú luego revisas las zonas como siempre. No toca cloración.</p>
+              </div>
+              <div style={{ borderRadius: 16, background: "rgba(255,255,255,0.12)", padding: "10px 12px", fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
+                Disponibles hoy: {trabajadoresDisponiblesParaFecha(new Date()).map(workerShort).join(", ")}
+              </div>
+              <button
+                onClick={asignarLimpiezaAutomaticaHoy}
+                disabled={autoAsignando || totalPendientes === 0}
+                style={{ padding: "15px 18px", borderRadius: 18, border: 0, background: "#fff", color: "#064e3b", fontWeight: 900, fontSize: 16, cursor: autoAsignando || totalPendientes === 0 ? "not-allowed" : "pointer", opacity: autoAsignando || totalPendientes === 0 ? .65 : 1 }}
+              >
+                {autoAsignando ? "Asignando..." : "Asignar automáticamente limpieza de hoy"}
+              </button>
+            </div>
+          </Card>
         )}
 
         {tab === "perros" && (
