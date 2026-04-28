@@ -194,6 +194,18 @@ const inputStyle = {
   outline: "none"
 };
 
+const protocoloTextareaStyle = {
+  ...inputStyle,
+  minHeight: 72,
+  maxHeight: 130,
+  resize: "vertical",
+  fontFamily: "inherit",
+  fontSize: 13,
+  lineHeight: 1.35,
+  padding: "9px 12px",
+  borderRadius: 12
+};
+
 function Card({ children, style = {} }) {
   return <div style={{ borderRadius: 24, background: "#f8f8f8", boxShadow: "0 14px 40px rgba(0,0,0,0.18)", overflow: "hidden", ...style }}>{children}</div>;
 }
@@ -833,13 +845,13 @@ export default function Page() {
         {tab === "perros" && (
           <div style={{ display: "grid", gap: 18 }}>
             <Card>
-              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 10 }}>
-                <SectionTitle>Protocolo de limpieza perros</SectionTitle>
+              <div style={{ padding: isMobile ? 10 : 12, display: "grid", gap: 6 }}>
+                <h3 style={{ margin: 0, color: "#e84d57", fontSize: isMobile ? 16 : 18, lineHeight: 1.1, fontWeight: 800 }}>Protocolo de limpieza perros</h3>
                 <textarea
                   value={protocoloPerros}
                   onChange={(e) => setProtocoloPerros(e.target.value)}
                   placeholder="Escribe aquí el protocolo o descripción de limpieza de perros e infecciosos..."
-                  style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "inherit" }}
+                  style={protocoloTextareaStyle}
                 />
               </div>
             </Card>
@@ -878,13 +890,13 @@ export default function Page() {
         {tab === "gatos" && (
           <div style={{ display: "grid", gap: 18 }}>
             <Card>
-              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 10 }}>
-                <SectionTitle>Protocolo de limpieza gatos</SectionTitle>
+              <div style={{ padding: isMobile ? 10 : 12, display: "grid", gap: 6 }}>
+                <h3 style={{ margin: 0, color: "#e84d57", fontSize: isMobile ? 16 : 18, lineHeight: 1.1, fontWeight: 800 }}>Protocolo de limpieza gatos</h3>
                 <textarea
                   value={protocoloGatos}
                   onChange={(e) => setProtocoloGatos(e.target.value)}
                   placeholder="Escribe aquí el protocolo o descripción de limpieza de gatos e infecciosos..."
-                  style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "inherit" }}
+                  style={protocoloTextareaStyle}
                 />
               </div>
             </Card>
@@ -976,13 +988,13 @@ export default function Page() {
         {tab === "cloro" && (
           <div style={{ display: "grid", gap: 14 }}>
             <Card>
-              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 10 }}>
-                <SectionTitle>Protocolo de cloración</SectionTitle>
+              <div style={{ padding: isMobile ? 10 : 12, display: "grid", gap: 6 }}>
+                <h3 style={{ margin: 0, color: "#e84d57", fontSize: isMobile ? 16 : 18, lineHeight: 1.1, fontWeight: 800 }}>Protocolo de cloración</h3>
                 <textarea
                   value={protocoloCloro}
                   onChange={(e) => setProtocoloCloro(e.target.value)}
                   placeholder="Escribe aquí el protocolo o descripción de cloración..."
-                  style={{ ...inputStyle, minHeight: 110, resize: "vertical", fontFamily: "inherit" }}
+                  style={protocoloTextareaStyle}
                 />
               </div>
             </Card>
