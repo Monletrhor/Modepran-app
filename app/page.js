@@ -371,6 +371,7 @@ export default function Page() {
   const [autoAsignando, setAutoAsignando] = useState(false);
   const [protocolosCargados, setProtocolosCargados] = useState(false);
   const autoAsignacionKeyRef = useRef("");
+  const autoRellenoMesKeyRef = useRef("");
 
   useEffect(() => {
     let mounted = true;
@@ -592,6 +593,81 @@ export default function Page() {
     await cargarTodo();
   }
 
+
+  async function autoRellenarMesVisiblePendientes() {
+    if (autoAsignando) return;
+
+    const hoy = new Date();
+    const ultimoDiaMes = getDaysInMonth(anioHist, mesHist);
+    const limiteDia = anioHist === hoy.getFullYear() && mesHist === hoy.getMonth()
+      ? hoy.getDate()
+      : ultimoDiaMes;
+
+    // No rellenar meses futuros.
+    if (new Date(anioHist, mesHist, 1).getTime() > new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).getTime()) return;
+
+    const zonasPerrosBase = Object.values(zonasPerros).flat();
+    const zonasGatosBase = Object.values(zonasGatos).flat();
+    const registrosExistentes = new Set(
+      [...histPerros, ...histGatos].map((r) => `${normalizeEsDate(r.fecha)}|${r.zona}`)
+    );
+
+    const tiempo = ahora();
+    const filas = [];
+
+    for (let dia = 1; dia <= limiteDia; dia++) {
+      const fechaObj = new Date(anioHist, mesHist, dia);
+      const fechaTrabajo = esFromParts(anioHist, String(mesHist + 1).padStart(2, "0"), String(dia).padStart(2, "0"));
+      const disponibles = trabajadoresDisponiblesParaFecha(fechaObj);
+      if (!disponibles.length) continue;
+
+      zonasPerrosBase.forEach((zona) => {
+        const key = `${fechaTrabajo}|${zona}`;
+        if (registrosExistentes.has(key)) return;
+        let grupo = "Zona principal";
+        if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
+        filas.push({
+          categoria: "perros",
+          grupo,
+          zona,
+          trabajador: trabajadorAleatorio(disponibles),
+          fecha: fechaTrabajo,
+          hora: tiempo.hora,
+          retroactivo: normalizeEsDate(fechaTrabajo) !== normalizeEsDate(tiempo.fecha),
+        });
+        registrosExistentes.add(key);
+      });
+
+      zonasGatosBase.forEach((zona) => {
+        const key = `${fechaTrabajo}|${zona}`;
+        if (registrosExistentes.has(key)) return;
+        filas.push({
+          categoria: "gatos",
+          grupo: zona.startsWith("Cuarentena") ? "Cuarentenas" : "Jaulones",
+          zona,
+          trabajador: trabajadorAleatorio(disponibles),
+          fecha: fechaTrabajo,
+          hora: tiempo.hora,
+          retroactivo: normalizeEsDate(fechaTrabajo) !== normalizeEsDate(tiempo.fecha),
+        });
+        registrosExistentes.add(key);
+      });
+    }
+
+    if (!filas.length) return;
+
+    setAutoAsignando(true);
+    const { error } = await supabase.from("registros_limpieza").insert(filas);
+    setAutoAsignando(false);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    await cargarTodo();
+  }
+
   function abrirSelector(item, fecha, tipo) {
     setSelectorItem(item);
     setSelectorFecha(fecha);
@@ -649,6 +725,17 @@ export default function Page() {
     autoAsignacionKeyRef.current = key;
     asignarLimpiezaAutomaticaHoy();
   }, [session, authLoading, limpiezaHoy, infecciososPerros, infecciososGatos, autoAsignando]);
+
+
+  useEffect(() => {
+    if (!session || authLoading || autoAsignando) return;
+    if (!histPerros || !histGatos) return;
+
+    const key = `${anioHist}-${mesHist}-${histPerros.length}-${histGatos.length}`;
+    if (autoRellenoMesKeyRef.current === key) return;
+    autoRellenoMesKeyRef.current = key;
+    autoRellenarMesVisiblePendientes();
+  }, [session, authLoading, anioHist, mesHist, histPerros, histGatos, autoAsignando]);
 
   const cloracionMesActual = useMemo(() => {
     const hoy = new Date();
