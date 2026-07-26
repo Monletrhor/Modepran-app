@@ -221,7 +221,7 @@ function EstadoBadge({ hecho, alerta = false }) {
   };
   return <span style={style}>{hecho ? "✔ Hecho" : alerta ? "⚠" : "Pendiente"}</span>;
 }
-function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = false }) {
+function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = false, listaTrabajadores = trabajadores }) {
   return (
     <div style={{ border: "1px solid #ececec", borderRadius: 20, padding: 16, background: registro ? "#ecfdf5" : "#fff" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
@@ -230,7 +230,7 @@ function RegistroRow({ title, registro, onSelect, disabled = false, bloqueado = 
       </div>
       <select disabled={disabled} defaultValue="" onChange={(e) => e.target.value && onSelect(e.target.value)} style={{ ...inputStyle, opacity: disabled ? .65 : 1 }}>
         <option value="">{bloqueado ? "Ya registrado hoy" : "Seleccionar trabajador"}</option>
-        {!disabled && trabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
+        {!disabled && listaTrabajadores.map((t) => <option key={t} value={t}>{t}</option>)}
       </select>
       {registro && (
         <div style={{ marginTop: 10, fontSize: 14, color: "#555", lineHeight: 1.6 }}>
@@ -372,6 +372,20 @@ export default function Page() {
   const [protocolosCargados, setProtocolosCargados] = useState(false);
   const autoAsignacionKeyRef = useRef("");
   const autoRellenoMesKeyRef = useRef("");
+  const [plantillaTrabajadores, setPlantillaTrabajadores] = useState(() => trabajadores.map((nombre) => ({
+    nombre,
+    diasLibres: Object.entries(descansosTrabajadores)
+      .filter(([_, nombres]) => nombres.some((n) => normalizarTrabajadorNombre(n) === normalizarTrabajadorNombre(nombre)))
+      .map(([dia]) => Number(dia))
+  })));
+  const [plantillaTrabajadoresCargada, setPlantillaTrabajadoresCargada] = useState(false);
+  const [nuevoTrabajadorNombre, setNuevoTrabajadorNombre] = useState("");
+  const [nuevoTrabajadorModelo, setNuevoTrabajadorModelo] = useState("");
+
+  const nombresTrabajadores = useMemo(
+    () => plantillaTrabajadores.map((t) => String(t.nombre || "").trim()).filter(Boolean),
+    [plantillaTrabajadores]
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -429,6 +443,74 @@ export default function Page() {
     setProtocoloCloro(localStorage.getItem("modepran_protocolo_cloro") || "");
     setProtocolosCargados(true);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const guardada = JSON.parse(localStorage.getItem("modepran_plantilla_trabajadores") || "null");
+      if (Array.isArray(guardada) && guardada.length) {
+        const limpia = guardada
+          .filter((t) => t && String(t.nombre || "").trim())
+          .map((t) => ({
+            nombre: String(t.nombre).trim(),
+            diasLibres: Array.isArray(t.diasLibres) ? t.diasLibres.map(Number).filter((d) => d >= 0 && d <= 6) : []
+          }));
+        if (limpia.length) setPlantillaTrabajadores(limpia);
+      }
+    } catch (error) {
+      console.error("No se pudo cargar la plantilla de trabajadores", error);
+    }
+    setPlantillaTrabajadoresCargada(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !plantillaTrabajadoresCargada) return;
+    localStorage.setItem("modepran_plantilla_trabajadores", JSON.stringify(plantillaTrabajadores));
+  }, [plantillaTrabajadores, plantillaTrabajadoresCargada]);
+
+  function trabajadoresDisponiblesFechaApp(date = new Date()) {
+    const dia = date.getDay();
+    return plantillaTrabajadores
+      .filter((t) => !Array.isArray(t.diasLibres) || !t.diasLibres.includes(dia))
+      .map((t) => String(t.nombre || "").trim())
+      .filter(Boolean);
+  }
+
+  function nombreDiasLibres(dias = []) {
+    const etiquetas = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+    return dias.slice().sort((a,b) => a-b).map((d) => etiquetas[d]).join(" y ") || "sin días libres configurados";
+  }
+
+  function agregarTrabajador() {
+    const nombre = nuevoTrabajadorNombre.trim();
+    if (!nombre || !nuevoTrabajadorModelo) return;
+    if (plantillaTrabajadores.some((t) => normalizarTrabajadorNombre(t.nombre) === normalizarTrabajadorNombre(nombre))) {
+      alert("Ese trabajador ya existe.");
+      return;
+    }
+    const modelo = plantillaTrabajadores.find((t) => t.nombre === nuevoTrabajadorModelo);
+    if (!modelo) return;
+    setPlantillaTrabajadores((prev) => [...prev, { nombre, diasLibres: [...(modelo.diasLibres || [])] }]);
+    setNuevoTrabajadorNombre("");
+    setNuevoTrabajadorModelo("");
+  }
+
+  function eliminarTrabajador(index) {
+    const trabajador = plantillaTrabajadores[index];
+    if (!trabajador) return;
+    if (!window.confirm(`¿Eliminar a ${trabajador.nombre} de la plantilla actual? El histórico anterior no se modifica.`)) return;
+    setPlantillaTrabajadores((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function renombrarTrabajador(index, nombre) {
+    setPlantillaTrabajadores((prev) => prev.map((t, i) => i === index ? { ...t, nombre } : t));
+  }
+
+  function copiarTurnoTrabajador(index, nombreModelo) {
+    const modelo = plantillaTrabajadores.find((t) => t.nombre === nombreModelo);
+    if (!modelo) return;
+    setPlantillaTrabajadores((prev) => prev.map((t, i) => i === index ? { ...t, diasLibres: [...(modelo.diasLibres || [])] } : t));
+  }
 
   useEffect(() => {
     if (typeof window === "undefined" || !protocolosCargados) return;
@@ -553,7 +635,7 @@ export default function Page() {
 
   async function asignarLimpiezaAutomaticaHoy() {
     if (autoAsignando) return;
-    const disponibles = trabajadoresDisponiblesParaFecha(new Date());
+    const disponibles = trabajadoresDisponiblesFechaApp(new Date());
     if (!disponibles.length) return;
 
     const tiempo = ahora();
@@ -618,7 +700,7 @@ export default function Page() {
     for (let dia = 1; dia <= limiteDia; dia++) {
       const fechaObj = new Date(anioHist, mesHist, dia);
       const fechaTrabajo = esFromParts(anioHist, String(mesHist + 1).padStart(2, "0"), String(dia).padStart(2, "0"));
-      const disponibles = trabajadoresDisponiblesParaFecha(fechaObj);
+      const disponibles = trabajadoresDisponiblesFechaApp(fechaObj);
       if (!disponibles.length) continue;
 
       zonasPerrosBase.forEach((zona) => {
@@ -916,13 +998,13 @@ export default function Page() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, background: "#171717", padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 8, zIndex: 5 }}>
-          {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"],["historico","📊 Histórico"]].map(([value, label]) => (
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5,1fr)", gap: 8, background: "#171717", padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 8, zIndex: 5 }}>
+          {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"],["trabajadores","👥 Trabajadores"],["historico","📊 Histórico"]].map(([value, label]) => (
             <button key={value} onClick={() => setTab(value)} style={{ padding: isMobile ? "15px 8px" : "14px 16px", borderRadius: 14, border: 0, cursor: "pointer", background: tab === value ? "#e84d57" : "transparent", color: "#fff", fontWeight: 800, fontSize: isMobile ? 14 : 16 }}>{label}</button>
           ))}
         </div>
 
-        {tab !== "historico" && (
+        {!["historico","trabajadores"].includes(tab) && (
           <div style={{ borderRadius: 20, background: totalPendientes === 0 ? "#064e3b" : "#3a2d00", color: "#fff", padding: isMobile ? "14px 16px" : "14px 18px", fontWeight: 800, fontSize: isMobile ? 15 : 16 }}>
             {totalPendientes === 0 ? "Limpieza al día. No quedan tareas pendientes." : `Pendientes actuales de limpieza: ${totalPendientes}`}
           </div>
@@ -952,7 +1034,7 @@ export default function Page() {
               <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
                 <SectionTitle>{grupo}</SectionTitle>
                 <div style={{ display: "grid", gap: 14 }}>
-                  {lista.map((zona) => <RegistroRow key={zona} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
+                  {lista.map((zona) => <RegistroRow key={zona} listaTrabajadores={nombresTrabajadores} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
                 </div>
               </div></Card>
             ))}
@@ -962,6 +1044,7 @@ export default function Page() {
                 <div style={{ padding: isMobile ? 16 : 24 }}>
                   <SectionTitle>Infecciosos Perros</SectionTitle>
                   <RegistroRow
+                    listaTrabajadores={nombresTrabajadores}
                     title="Limpieza infecciosos perros"
                     registro={limpiezaHoy["Infecciosos Perros"]}
                     onSelect={(v) => registrar("Infecciosos Perros", v)}
@@ -1004,7 +1087,7 @@ export default function Page() {
                     style={inputStyle}
                   >
                     <option value="">Seleccionar trabajador</option>
-                    {trabajadores.map((t) => (
+                    {nombresTrabajadores.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
@@ -1050,7 +1133,7 @@ export default function Page() {
               <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
                 <SectionTitle>{grupo}</SectionTitle>
                 <div style={{ display: "grid", gap: 14 }}>
-                  {lista.map((zona) => <RegistroRow key={zona} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
+                  {lista.map((zona) => <RegistroRow key={zona} listaTrabajadores={nombresTrabajadores} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
                 </div>
               </div></Card>
             ))}
@@ -1060,6 +1143,7 @@ export default function Page() {
                 <div style={{ padding: isMobile ? 16 : 24 }}>
                   <SectionTitle>Infecciosos Gatos</SectionTitle>
                   <RegistroRow
+                    listaTrabajadores={nombresTrabajadores}
                     title="Limpieza infecciosos gatos"
                     registro={limpiezaHoy["Infecciosos Gatos"]}
                     onSelect={(v) => registrar("Infecciosos Gatos", v)}
@@ -1104,6 +1188,7 @@ export default function Page() {
                 return (
                   <RegistroRow
                     key={d}
+                    listaTrabajadores={nombresTrabajadores}
                     title={d}
                     registro={registroMes ? {
                       trabajador: registroMes.trabajador,
@@ -1118,6 +1203,58 @@ export default function Page() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {tab === "trabajadores" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 24, display: "grid", gap: 16 }}>
+                <SectionTitle>Plantilla de trabajadores</SectionTitle>
+                <div style={{ color: "#555", fontSize: 14, lineHeight: 1.5 }}>
+                  Los cambios afectan a las nuevas asignaciones. Los registros históricos ya guardados mantienen el nombre original.
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1fr auto", gap: 10, alignItems: "end", padding: 14, background: "#fff", borderRadius: 18, border: "1px solid #e5e7eb" }}>
+                  <div style={{ display: "grid", gap: 7 }}>
+                    <label style={{ fontWeight: 800 }}>Nuevo trabajador</label>
+                    <input value={nuevoTrabajadorNombre} onChange={(e) => setNuevoTrabajadorNombre(e.target.value)} placeholder="Nombre y apellidos" style={inputStyle} />
+                  </div>
+                  <div style={{ display: "grid", gap: 7 }}>
+                    <label style={{ fontWeight: 800 }}>Usar el turno de</label>
+                    <select value={nuevoTrabajadorModelo} onChange={(e) => setNuevoTrabajadorModelo(e.target.value)} style={inputStyle}>
+                      <option value="">Seleccionar trabajador</option>
+                      {nombresTrabajadores.map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}
+                    </select>
+                  </div>
+                  <button onClick={agregarTrabajador} disabled={!nuevoTrabajadorNombre.trim() || !nuevoTrabajadorModelo} style={{ padding: "15px 18px", borderRadius: 16, border: 0, background: "#e84d57", color: "#fff", fontWeight: 800, cursor: "pointer", opacity: nuevoTrabajadorNombre.trim() && nuevoTrabajadorModelo ? 1 : .55 }}>
+                    Añadir
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: 10 }}>
+                  {plantillaTrabajadores.map((trabajador, index) => (
+                    <div key={`${index}-${trabajador.nombre}`} style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.25fr 1fr auto", gap: 10, alignItems: "center", padding: 14, borderRadius: 18, border: "1px solid #e5e7eb", background: "#fff" }}>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <label style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>Nombre</label>
+                        <input value={trabajador.nombre} onChange={(e) => renombrarTrabajador(index, e.target.value)} style={{ ...inputStyle, padding: "11px 13px" }} />
+                        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>Descansa: {nombreDiasLibres(trabajador.diasLibres || [])}</div>
+                      </div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <label style={{ fontSize: 12, fontWeight: 800, color: "#64748b" }}>Cambiar al turno de</label>
+                        <select defaultValue="" onChange={(e) => { if (e.target.value) copiarTurnoTrabajador(index, e.target.value); e.target.value = ""; }} style={{ ...inputStyle, padding: "11px 13px" }}>
+                          <option value="">Seleccionar compañero</option>
+                          {nombresTrabajadores.filter((nombre) => nombre !== trabajador.nombre).map((nombre) => <option key={nombre} value={nombre}>{nombre}</option>)}
+                        </select>
+                      </div>
+                      <button onClick={() => eliminarTrabajador(index)} style={{ padding: "12px 15px", borderRadius: 14, border: "1px solid #fecaca", background: "#fff1f2", color: "#b91c1c", fontWeight: 800, cursor: "pointer" }}>
+                        Eliminar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
           </div>
         )}
 
@@ -1221,7 +1358,7 @@ export default function Page() {
                     style={inputStyle}
                   >
                     <option value="">Seleccionar trabajador</option>
-                    {trabajadores.map((t) => (
+                    {nombresTrabajadores.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
