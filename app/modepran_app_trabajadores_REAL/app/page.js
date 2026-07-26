@@ -1,0 +1,1407 @@
+'use client'
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  "https://lhkxoyrlxdozcmrhejuq.supabase.co",
+  "sb_publishable_K-UdDxlQvt1y7kYuhF4MCw_71MhuQ5f"
+);
+
+const trabajadoresIniciales = [
+  "Maria penades","Joana todo","Martina simova","Mireia soro","Elena Palau",
+  "Katya urias","Kenia urias","David Valls","Johana tavera","Xujey Suarez",
+  "Rafa Sales","Jenny Martinez","Trini","Jorge"
+];
+
+const descansosInicialesPorNombre = {
+  "David Valls": [0], "Johana tavera": [0], "Trini": [0], "Jorge": [0],
+  "Maria penades": [1,2], "Joana todo": [1,2], "Xujey Suarez": [1,2],
+  "Martina simova": [3,4], "Mireia soro": [3,4], "Rafa Sales": [3,4],
+  "Elena Palau": [5,6], "Katya urias": [5,6], "Jenny Martinez": [5,6],
+  "Kenia urias": []
+};
+
+const plantillaInicialTrabajadores = trabajadoresIniciales.map((nombre) => ({
+  nombre,
+  descansos: descansosInicialesPorNombre[nombre] || []
+}));
+const zonasPerros = {
+  "Zona principal": ["INVERNADERO", "RESIDENCIA", "FASE 1", "FASE 2", "FASE 3"],
+  "Campo Nuevo": ["FASE 4", "FASE 5", "FASE 6", "FASE 7"],
+};
+const zonasGatos = {
+  "Cuarentenas": ["Cuarentena 1", "Cuarentena 2"],
+  "Jaulones": ["Jaulón 1", "Jaulón 2", "Jaulón 3", "Jaulón 4", "Jaulón 5", "Jaulón 6"],
+};
+const depositos = Array.from({ length: 20 }, (_, i) => `Depósito ${i + 1}`);
+const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function ahora() {
+  const d = new Date();
+  return {
+    fecha: d.toLocaleDateString("es-ES"),
+    hora: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    timestamp: d.toISOString(),
+  };
+}
+function dateInputValue(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function normalizeEsDate(str) {
+  if (!str) return "";
+  const parts = str.split("/");
+  if (parts.length !== 3) return str;
+  const [d,m,y] = parts;
+  return `${Number(d)}/${Number(m)}/${Number(y)}`;
+}
+function fechaSortValue(str) {
+  const parts = normalizeEsDate(str).split("/");
+  if (parts.length !== 3) return 0;
+  const [d, m, y] = parts.map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+function ordenarPorFechaTrabajo(a, b) {
+  return (fechaSortValue(a.fecha) - fechaSortValue(b.fecha)) || String(a.zona || a.deposito || "").localeCompare(String(b.zona || b.deposito || ""));
+}
+function esFromParts(y,m,d){
+  return normalizeEsDate(`${d}/${m}/${y}`);
+}
+function getDaysInMonth(year, monthIndex){
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+function escapeHtml(text) {
+  return String(text ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+function workerShort(name) {
+  if (!name) return "";
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[1]}`;
+}
+
+function normalizarTrabajadorNombre(nombre) {
+  return String(nombre || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function trabajadoresDisponiblesParaFecha(plantilla, date = new Date()) {
+  const dia = date.getDay();
+  return (plantilla || [])
+    .filter((t) => !(t.descansos || []).includes(dia))
+    .map((t) => t.nombre)
+    .filter(Boolean);
+}
+
+function textoTurno(descansos = []) {
+  const nombres = ["domingo","lunes","martes","miércoles","jueves","viernes","sábado"];
+  if (!descansos.length) return "Sin descanso configurado";
+  return "Descansa " + descansos.map((d) => nombres[d]).join(" y ");
+}
+
+function trabajadorAleatorio(lista) {
+  if (!lista.length) return "";
+  return lista[Math.floor(Math.random() * lista.length)];
+}
+function abrirVentanaImpresion(titulo, contenido) {
+  const win = window.open("", "_blank", "width=1200,height=900");
+  if (!win) return;
+  win.document.write(`
+    <html>
+      <head>
+        <title>${escapeHtml(titulo)}</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 5mm;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            background: white;
+          }
+          body {
+            font-family: Arial, sans-serif;
+            color: #222;
+            padding: 6mm;
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print-wrap {
+            transform-origin: top left;
+            width: 100%;
+          }
+          h1 {
+            margin: 0 0 4px;
+            color: #e84d57;
+            font-size: 15px;
+            line-height: 1.1;
+          }
+          p {
+            margin: 3px 0;
+            font-size: 10px;
+            line-height: 1.15;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 6px;
+            table-layout: fixed;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 3px 4px;
+            text-align: left;
+            font-size: 9px;
+            line-height: 1.1;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            vertical-align: top;
+          }
+          th {
+            background: #f4f4f4;
+            font-size: 9px;
+          }
+          .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 999px;
+            background: #e84d57;
+            color: white;
+            font-size: 9px;
+            font-weight: 700;
+          }
+          @media print {
+            body {
+              zoom: 0.78;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-wrap">
+          ${contenido}
+        </div>
+      </body>
+    </html>
+  `);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 250);
+}
+
+const inputStyle = {
+  width: "100%",
+  padding: "14px 16px",
+  borderRadius: 16,
+  border: "1px solid #ddd",
+  background: "#fff",
+  fontSize: 16,
+  outline: "none"
+};
+
+const protocoloTextareaStyle = {
+  ...inputStyle,
+  minHeight: 72,
+  maxHeight: 130,
+  resize: "vertical",
+  fontFamily: "inherit",
+  fontSize: 13,
+  lineHeight: 1.35,
+  padding: "9px 12px",
+  borderRadius: 12
+};
+
+function Card({ children, style = {} }) {
+  return <div style={{ borderRadius: 24, background: "#f8f8f8", boxShadow: "0 14px 40px rgba(0,0,0,0.18)", overflow: "hidden", ...style }}>{children}</div>;
+}
+function SectionTitle({ children }) {
+  return <h2 style={{ margin: "0 0 18px", color: "#e84d57", fontSize: 28, lineHeight: 1.1, fontWeight: 800 }}>{children}</h2>;
+}
+function EstadoBadge({ hecho, alerta = false }) {
+  const style = {
+    display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "6px 10px",
+    borderRadius: 999, fontSize: 11, fontWeight: 800,
+    background: hecho ? "#10b981" : alerta ? "#dc2626" : "#fbbf24",
+    color: hecho || alerta ? "#fff" : "#111"
+  };
+  return <span style={style}>{hecho ? "✔ Hecho" : alerta ? "⚠" : "Pendiente"}</span>;
+}
+function RegistroRow({ title, registro, onSelect, trabajadoresLista = [], disabled = false, bloqueado = false }) {
+  return (
+    <div style={{ border: "1px solid #ececec", borderRadius: 20, padding: 16, background: registro ? "#ecfdf5" : "#fff" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 800, fontSize: 18, color: "#1f1f1f" }}>{title}</span>
+        <EstadoBadge hecho={!!registro} />
+      </div>
+      <select disabled={disabled} defaultValue="" onChange={(e) => e.target.value && onSelect(e.target.value)} style={{ ...inputStyle, opacity: disabled ? .65 : 1 }}>
+        <option value="">{bloqueado ? "Ya registrado hoy" : "Seleccionar trabajador"}</option>
+        {!disabled && trabajadoresLista.map((t) => <option key={t} value={t}>{t}</option>)}
+      </select>
+      {registro && (
+        <div style={{ marginTop: 10, fontSize: 14, color: "#555", lineHeight: 1.6 }}>
+          <div><strong>Trabajador:</strong> {registro.trabajador}</div>
+          <div><strong>Fecha trabajo:</strong> {registro.fecha}</div>
+          <div><strong>Hora:</strong> {registro.hora}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MonthYearPicker({ mes, setMes, anio, setAnio }) {
+  const years = [];
+  const actual = new Date().getFullYear();
+  for (let y = actual - 3; y <= actual + 2; y++) years.push(y);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 120px", gap: 10 }}>
+      <select value={mes} onChange={(e) => setMes(Number(e.target.value))} style={inputStyle}>
+        {meses.map((m, i) => <option key={m} value={i}>{m}</option>)}
+      </select>
+      <select value={anio} onChange={(e) => setAnio(Number(e.target.value))} style={inputStyle}>
+        {years.map((y) => <option key={y} value={y}>{y}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function MesGrid({ titulo, items, registros, anio, mes, isMobile, onAdd }) {
+  const daysInMonth = getDaysInMonth(anio, mes);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  function buscarRegistro(nombre, day) {
+    const fecha = esFromParts(anio, String(mes + 1).padStart(2,"0"), String(day).padStart(2,"0"));
+    return registros.find((r) => (r.zona === nombre || r.deposito === nombre) && normalizeEsDate(r.fecha) === fecha);
+  }
+
+  return (
+    <Card>
+      <div style={{ padding: isMobile ? 12 : 18, display: "grid", gap: 14 }}>
+        <SectionTitle>{titulo}</SectionTitle>
+        <div style={{ overflowX: "auto", borderRadius: 16, border: "1px solid #e7e7e7", background: "#fff" }}>
+          <div style={{ minWidth: isMobile ? 1550 : 2400 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(72px, 1fr))", background: "#f8fafc", borderBottom: "1px solid #e7e7e7", position: "sticky", top: 0, zIndex: 2 }}>
+              <div style={{ padding: 10, fontWeight: 800, borderRight: "1px solid #e7e7e7" }}>Zona / Depósito</div>
+              {days.map((d) => (
+                <div key={d} style={{ padding: 10, textAlign: "center", fontWeight: 800, borderRight: "1px solid #eef2f7", fontSize: 13 }}>{d}</div>
+              ))}
+            </div>
+            {items.map((item, idx) => (
+              <div key={item} style={{ display: "grid", gridTemplateColumns: "220px repeat(" + daysInMonth + ", minmax(72px, 1fr))", borderBottom: idx === items.length - 1 ? "0" : "1px solid #f1f5f9" }}>
+                <div style={{ padding: "10px 12px", borderRight: "1px solid #e7e7e7", fontWeight: 700, display: "flex", alignItems: "center" }}>{item}</div>
+                {days.map((d) => {
+                  const reg = buscarRegistro(item, d);
+                  const fecha = esFromParts(anio, String(mes + 1).padStart(2,"0"), String(d).padStart(2,"0"));
+                  return (
+                    <button
+                      key={d}
+                      title={reg ? `${item}\n${reg.trabajador}\n${reg.fecha} ${reg.hora}${reg.retroactivo ? '\nRetroactivo' : ''}` : `Añadir ${item} - ${fecha}`}
+                      onClick={() => { if (!reg) { onAdd(item, fecha); } }}
+                      style={{
+                        border: 0,
+                        borderRight: "1px solid #eef2f7",
+                        background: reg ? "#dcfce7" : "#fff",
+                        color: reg ? "#166534" : "#94a3b8",
+                        minHeight: 64,
+                        cursor: reg ? "default" : "pointer",
+                        padding: 4,
+                        display: "grid",
+                        alignContent: "center",
+                        justifyItems: "center",
+                        gap: 2
+                      }}
+                    >
+                      {reg ? (
+                        <>
+                          <div style={{ fontWeight: 800, fontSize: 11, lineHeight: 1, color: "#166534" }}>
+                            ✔
+                          </div>
+                          <div style={{ fontSize: 10, fontWeight: 700, lineHeight: 1.1, textAlign: "center", color: "#111827" }}>
+                            {workerShort(reg.trabajador)}
+                          </div>
+                          <div style={{ fontSize: 9, lineHeight: 1.1, textAlign: "center", color: "#475569" }}>
+                            {normalizeEsDate(reg.fecha)}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1, color: "#94a3b8" }}>·</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ fontSize: 13, color: "#555", fontWeight: 700 }}>
+          Verde = hecho · En cada celda se ve trabajador y fecha. Pulsa una celda pendiente para completar ese día.
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export default function Page() {
+  const today = new Date();
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [tab, setTab] = useState("perros");
+  const [historicoTab, setHistoricoTab] = useState("perros");
+  const [isMobile, setIsMobile] = useState(false);
+  const [estadoConexion, setEstadoConexion] = useState("Conectando con Supabase...");
+  const [infecciososGatos, setInfecciososGatos] = useState(false);
+  const [infecciososPerros, setInfecciososPerros] = useState(false);
+  const [mesHist, setMesHist] = useState(today.getMonth());
+  const [anioHist, setAnioHist] = useState(today.getFullYear());
+  const [limpiezaHoy, setLimpiezaHoy] = useState({});
+  const [cloracionHoy, setCloracionHoy] = useState({});
+  const [histPerros, setHistPerros] = useState([]);
+  const [histGatos, setHistGatos] = useState([]);
+  const [histCloro, setHistCloro] = useState([]);
+  const [selectorAbierto, setSelectorAbierto] = useState(false);
+  const [selectorTrabajador, setSelectorTrabajador] = useState("");
+  const [selectorTrabajadorManual, setSelectorTrabajadorManual] = useState("");
+  const [selectorItem, setSelectorItem] = useState("");
+  const [selectorFecha, setSelectorFecha] = useState("");
+  const [selectorTipo, setSelectorTipo] = useState("limpieza");
+  const [protocoloPerros, setProtocoloPerros] = useState("");
+  const [protocoloGatos, setProtocoloGatos] = useState("");
+  const [protocoloCloro, setProtocoloCloro] = useState("");
+  const [trabajadorMasivoGatos, setTrabajadorMasivoGatos] = useState("");
+  const [trabajadorMasivoGatosManual, setTrabajadorMasivoGatosManual] = useState("");
+  const [selectorMarcarTodasGatos, setSelectorMarcarTodasGatos] = useState(false);
+  const [autoAsignando, setAutoAsignando] = useState(false);
+  const [protocolosCargados, setProtocolosCargados] = useState(false);
+  const [plantillaTrabajadores, setPlantillaTrabajadores] = useState(plantillaInicialTrabajadores);
+  const [plantillaCargada, setPlantillaCargada] = useState(false);
+  const [nuevoTrabajador, setNuevoTrabajador] = useState("");
+  const [turnoReferencia, setTurnoReferencia] = useState("");
+  const autoAsignacionKeyRef = useRef("");
+  const autoRellenoMesKeyRef = useRef("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) console.error(error);
+      setSession(data?.session ?? null);
+      setAuthLoading(false);
+    });
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    setLoginError("");
+    setLoginLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+    if (error) {
+      console.error(error);
+      setLoginError("Correo o contraseña incorrectos.");
+    }
+    setLoginLoading(false);
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setProtocoloPerros(localStorage.getItem("modepran_protocolo_perros") || "");
+    setProtocoloGatos(localStorage.getItem("modepran_protocolo_gatos") || "");
+    setProtocoloCloro(localStorage.getItem("modepran_protocolo_cloro") || "");
+    setProtocolosCargados(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !protocolosCargados) return;
+    localStorage.setItem("modepran_protocolo_perros", protocoloPerros);
+  }, [protocoloPerros, protocolosCargados]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !protocolosCargados) return;
+    localStorage.setItem("modepran_protocolo_gatos", protocoloGatos);
+  }, [protocoloGatos, protocolosCargados]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !protocolosCargados) return;
+    localStorage.setItem("modepran_protocolo_cloro", protocoloCloro);
+  }, [protocoloCloro, protocolosCargados]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const guardada = JSON.parse(localStorage.getItem("modepran_plantilla_trabajadores") || "null");
+      if (Array.isArray(guardada) && guardada.length) {
+        setPlantillaTrabajadores(guardada.filter((t) => t && t.nombre).map((t) => ({ nombre: String(t.nombre), descansos: Array.isArray(t.descansos) ? t.descansos : [] })));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setPlantillaCargada(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !plantillaCargada) return;
+    localStorage.setItem("modepran_plantilla_trabajadores", JSON.stringify(plantillaTrabajadores));
+  }, [plantillaTrabajadores, plantillaCargada]);
+
+  const trabajadores = useMemo(() => plantillaTrabajadores.map((t) => t.nombre).filter(Boolean), [plantillaTrabajadores]);
+
+  function anadirTrabajador() {
+    const nombre = nuevoTrabajador.trim();
+    if (!nombre) return;
+    if (plantillaTrabajadores.some((t) => normalizarTrabajadorNombre(t.nombre) === normalizarTrabajadorNombre(nombre))) {
+      alert("Ese trabajador ya existe.");
+      return;
+    }
+    const ref = plantillaTrabajadores.find((t) => t.nombre === turnoReferencia);
+    setPlantillaTrabajadores((prev) => [...prev, { nombre, descansos: ref ? [...ref.descansos] : [] }]);
+    setNuevoTrabajador("");
+    setTurnoReferencia("");
+  }
+
+  function eliminarTrabajador(nombre) {
+    if (!window.confirm(`¿Eliminar a ${nombre} de la plantilla? El histórico anterior no se modificará.`)) return;
+    setPlantillaTrabajadores((prev) => prev.filter((t) => t.nombre !== nombre));
+  }
+
+  function renombrarTrabajador(nombreActual, nombreNuevo) {
+    const limpio = nombreNuevo.trim();
+    if (!limpio || limpio === nombreActual) return;
+    if (plantillaTrabajadores.some((t) => t.nombre !== nombreActual && normalizarTrabajadorNombre(t.nombre) === normalizarTrabajadorNombre(limpio))) {
+      alert("Ya existe otro trabajador con ese nombre.");
+      return;
+    }
+    setPlantillaTrabajadores((prev) => prev.map((t) => t.nombre === nombreActual ? { ...t, nombre: limpio } : t));
+  }
+
+  function copiarTurno(nombre, referencia) {
+    const ref = plantillaTrabajadores.find((t) => t.nombre === referencia);
+    if (!ref) return;
+    setPlantillaTrabajadores((prev) => prev.map((t) => t.nombre === nombre ? { ...t, descansos: [...ref.descansos] } : t));
+  }
+
+  async function cargarTodo() {
+    try {
+      const { data: limpias, error: e1 } = await supabase.from("registros_limpieza").select("*").order("created_at", { ascending: false });
+      const { data: cloros, error: e2 } = await supabase.from("registros_cloracion").select("*").order("created_at", { ascending: false });
+      if (e1) throw e1;
+      if (e2) throw e2;
+
+      const hoyEs = normalizeEsDate(new Date().toLocaleDateString("es-ES"));
+      const mapHoyL = {};
+      const mapHoyC = {};
+      (limpias || []).forEach((item) => {
+        if (normalizeEsDate(item.fecha) === hoyEs && !mapHoyL[item.zona]) {
+          mapHoyL[item.zona] = { trabajador: item.trabajador, fecha: item.fecha, hora: item.hora, retroactivo: !!item.retroactivo, created_at: item.created_at };
+        }
+      });
+      (cloros || []).forEach((item) => {
+        if (normalizeEsDate(item.fecha) === hoyEs && !mapHoyC[item.deposito]) {
+          mapHoyC[item.deposito] = { trabajador: item.trabajador, fecha: item.fecha, hora: item.hora, retroactivo: !!item.retroactivo, created_at: item.created_at };
+        }
+      });
+
+      setLimpiezaHoy(mapHoyL);
+      setCloracionHoy(mapHoyC);
+      setHistPerros((limpias || []).filter(x => x.categoria === "perros"));
+      setHistGatos((limpias || []).filter(x => x.categoria === "gatos"));
+      setHistCloro(cloros || []);
+      setEstadoConexion("Supabase conectado");
+    } catch (error) {
+      console.error(error);
+      setEstadoConexion("No se pudo conectar con Supabase");
+    }
+  }
+  useEffect(() => { cargarTodo(); }, []);
+
+  async function registrar(zona, trabajador, fechaTrabajo=null) {
+    if (!trabajador) return;
+    const tiempo = ahora();
+    const fechaElegida = fechaTrabajo || tiempo.fecha;
+    let categoria = "perros";
+    let grupo = "Zona principal";
+    if (Object.values(zonasGatos).flat().includes(zona) || zona === "Infecciosos Gatos") {
+      categoria = "gatos";
+      if (zona.startsWith("Cuarentena")) grupo = "Cuarentenas";
+      else if (zona.startsWith("Jaulón")) grupo = "Jaulones";
+      else if (zona === "Infecciosos Gatos") grupo = "Infecciosos";
+    } else {
+      if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
+      if (zona === "Infecciosos Perros") grupo = "Infecciosos";
+    }
+    const retroactivo = normalizeEsDate(fechaElegida) !== normalizeEsDate(tiempo.fecha);
+    const { error } = await supabase.from("registros_limpieza").insert([{ categoria, grupo, zona, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
+    if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
+    await cargarTodo();
+  }
+
+  async function registrarCloro(deposito, trabajador, fechaTrabajo=null) {
+    if (!trabajador) return;
+    const tiempo = ahora();
+    const fechaElegida = fechaTrabajo || tiempo.fecha;
+    const retroactivo = normalizeEsDate(fechaElegida) !== normalizeEsDate(tiempo.fecha);
+    const { error } = await supabase.from("registros_cloracion").insert([{ deposito, trabajador, fecha: fechaElegida, hora: tiempo.hora, retroactivo }]);
+    if (error) { console.error(error); alert("No se ha podido guardar en Supabase"); return; }
+    await cargarTodo();
+  }
+
+  async function registrarTodasLasZonasGatos() {
+    const trabajadorFinal = (trabajadorMasivoGatosManual || trabajadorMasivoGatos || "").trim();
+    if (!trabajadorFinal) return;
+    await registrarMultiplesZonasGatos(trabajadorFinal, ahora().fecha, limpiezaHoy, false);
+    setTrabajadorMasivoGatos("");
+    setTrabajadorMasivoGatosManual("");
+  }
+
+  async function registrarMultiplesZonasGatos(trabajadorFinal, fechaTrabajo, mapaExistente = null, usarRetroactivo = false) {
+    const mapa = mapaExistente || {};
+    const zonasPendientes = Object.values(zonasGatos).flat().filter((zona) => {
+      return !Object.values(mapa).some((registro) => registro?.zona === zona || mapa[zona]);
+    });
+
+    if (!zonasPendientes.length) {
+      alert("No hay zonas de gatos pendientes para marcar.");
+      return false;
+    }
+
+    const tiempo = ahora();
+    const filas = zonasPendientes.map((zona) => ({
+      categoria: "gatos",
+      grupo: zona.startsWith("Cuarentena") ? "Cuarentenas" : "Jaulones",
+      zona,
+      trabajador: trabajadorFinal,
+      fecha: fechaTrabajo,
+      hora: tiempo.hora,
+      retroactivo: !!usarRetroactivo,
+    }));
+
+    const { error } = await supabase.from("registros_limpieza").insert(filas);
+    if (error) {
+      console.error(error);
+      alert("No se han podido guardar las zonas de gatos en Supabase");
+      return false;
+    }
+
+    await cargarTodo();
+    return true;
+  }
+
+  async function asignarLimpiezaAutomaticaHoy() {
+    if (autoAsignando) return;
+    const disponibles = trabajadoresDisponiblesParaFecha(plantillaTrabajadores, new Date());
+    if (!disponibles.length) return;
+
+    const tiempo = ahora();
+    const filas = [];
+    const todasPerros = Object.values(zonasPerros).flat();
+    const todasGatos = Object.values(zonasGatos).flat();
+    if (infecciososPerros) todasPerros.push("Infecciosos Perros");
+    if (infecciososGatos) todasGatos.push("Infecciosos Gatos");
+
+    todasPerros.forEach((zona) => {
+      if (limpiezaHoy[zona]) return;
+      let grupo = "Zona principal";
+      if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
+      if (zona === "Infecciosos Perros") grupo = "Infecciosos";
+      filas.push({ categoria: "perros", grupo, zona, trabajador: trabajadorAleatorio(disponibles), fecha: tiempo.fecha, hora: tiempo.hora, retroactivo: false });
+    });
+
+    todasGatos.forEach((zona) => {
+      if (limpiezaHoy[zona]) return;
+      let grupo = "Jaulones";
+      if (zona.startsWith("Cuarentena")) grupo = "Cuarentenas";
+      if (zona === "Infecciosos Gatos") grupo = "Infecciosos";
+      filas.push({ categoria: "gatos", grupo, zona, trabajador: trabajadorAleatorio(disponibles), fecha: tiempo.fecha, hora: tiempo.hora, retroactivo: false });
+    });
+
+    if (!filas.length) return;
+
+    setAutoAsignando(true);
+    const { error } = await supabase.from("registros_limpieza").insert(filas);
+    setAutoAsignando(false);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    await cargarTodo();
+  }
+
+
+  async function autoRellenarMesVisiblePendientes() {
+    if (autoAsignando) return;
+
+    const hoy = new Date();
+    const ultimoDiaMes = getDaysInMonth(anioHist, mesHist);
+    const limiteDia = anioHist === hoy.getFullYear() && mesHist === hoy.getMonth()
+      ? hoy.getDate()
+      : ultimoDiaMes;
+
+    // No rellenar meses futuros.
+    if (new Date(anioHist, mesHist, 1).getTime() > new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate()).getTime()) return;
+
+    const zonasPerrosBase = Object.values(zonasPerros).flat();
+    const zonasGatosBase = Object.values(zonasGatos).flat();
+    const registrosExistentes = new Set(
+      [...histPerros, ...histGatos].map((r) => `${normalizeEsDate(r.fecha)}|${r.zona}`)
+    );
+
+    const tiempo = ahora();
+    const filas = [];
+
+    for (let dia = 1; dia <= limiteDia; dia++) {
+      const fechaObj = new Date(anioHist, mesHist, dia);
+      const fechaTrabajo = esFromParts(anioHist, String(mesHist + 1).padStart(2, "0"), String(dia).padStart(2, "0"));
+      const disponibles = trabajadoresDisponiblesParaFecha(plantillaTrabajadores, fechaObj);
+      if (!disponibles.length) continue;
+
+      zonasPerrosBase.forEach((zona) => {
+        const key = `${fechaTrabajo}|${zona}`;
+        if (registrosExistentes.has(key)) return;
+        let grupo = "Zona principal";
+        if (zonasPerros["Campo Nuevo"].includes(zona)) grupo = "Campo Nuevo";
+        filas.push({
+          categoria: "perros",
+          grupo,
+          zona,
+          trabajador: trabajadorAleatorio(disponibles),
+          fecha: fechaTrabajo,
+          hora: tiempo.hora,
+          retroactivo: normalizeEsDate(fechaTrabajo) !== normalizeEsDate(tiempo.fecha),
+        });
+        registrosExistentes.add(key);
+      });
+
+      zonasGatosBase.forEach((zona) => {
+        const key = `${fechaTrabajo}|${zona}`;
+        if (registrosExistentes.has(key)) return;
+        filas.push({
+          categoria: "gatos",
+          grupo: zona.startsWith("Cuarentena") ? "Cuarentenas" : "Jaulones",
+          zona,
+          trabajador: trabajadorAleatorio(disponibles),
+          fecha: fechaTrabajo,
+          hora: tiempo.hora,
+          retroactivo: normalizeEsDate(fechaTrabajo) !== normalizeEsDate(tiempo.fecha),
+        });
+        registrosExistentes.add(key);
+      });
+    }
+
+    if (!filas.length) return;
+
+    setAutoAsignando(true);
+    const { error } = await supabase.from("registros_limpieza").insert(filas);
+    setAutoAsignando(false);
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    await cargarTodo();
+  }
+
+  function abrirSelector(item, fecha, tipo) {
+    setSelectorItem(item);
+    setSelectorFecha(fecha);
+    setSelectorTipo(tipo);
+    setSelectorTrabajador("");
+    setSelectorTrabajadorManual("");
+    setSelectorMarcarTodasGatos(false);
+    setSelectorAbierto(true);
+  }
+
+  async function confirmarSelector() {
+    const trabajadorFinal = (selectorTrabajadorManual || selectorTrabajador || "").trim();
+    if (!trabajadorFinal || !selectorItem || !selectorFecha) return;
+
+    const esSelectorGatos = Object.values(zonasGatos).flat().includes(selectorItem);
+    if (selectorMarcarTodasGatos && esSelectorGatos) {
+      const fechaObjetivo = normalizeEsDate(selectorFecha);
+      const registrosDelDia = histGatos.filter((r) => normalizeEsDate(r.fecha) === fechaObjetivo);
+      const mapaDia = Object.fromEntries(registrosDelDia.map((r) => [r.zona, r]));
+      const ok = await registrarMultiplesZonasGatos(trabajadorFinal, selectorFecha, mapaDia, true);
+      if (!ok) return;
+    } else if (selectorTipo === "cloro") {
+      await registrarCloro(selectorItem, trabajadorFinal, selectorFecha);
+    } else {
+      await registrar(selectorItem, trabajadorFinal, selectorFecha);
+    }
+    setSelectorAbierto(false);
+    setSelectorTrabajador("");
+    setSelectorTrabajadorManual("");
+    setSelectorItem("");
+    setSelectorFecha("");
+    setSelectorTipo("limpieza");
+    setSelectorMarcarTodasGatos(false);
+  }
+
+  const totalPendientes = useMemo(() => {
+    const perros = Object.values(zonasPerros).flat().filter((z) => !limpiezaHoy[z]).length;
+    const gatos = Object.values(zonasGatos).flat().filter((z) => !limpiezaHoy[z]).length;
+    return perros + gatos + (infecciososPerros && !limpiezaHoy["Infecciosos Perros"] ? 1 : 0) + (infecciososGatos && !limpiezaHoy["Infecciosos Gatos"] ? 1 : 0);
+  }, [limpiezaHoy, infecciososPerros, infecciososGatos]);
+
+  useEffect(() => {
+    if (!session || authLoading || autoAsignando) return;
+    const hoy = normalizeEsDate(new Date().toLocaleDateString("es-ES"));
+    const pendientes = [
+      ...Object.values(zonasPerros).flat(),
+      ...Object.values(zonasGatos).flat(),
+      ...(infecciososPerros ? ["Infecciosos Perros"] : []),
+      ...(infecciososGatos ? ["Infecciosos Gatos"] : []),
+    ].filter((zona) => !limpiezaHoy[zona]);
+    if (!pendientes.length) return;
+
+    const key = hoy + "-" + pendientes.slice().sort().join("|") + "-" + infecciososPerros + "-" + infecciososGatos;
+    if (autoAsignacionKeyRef.current === key) return;
+    autoAsignacionKeyRef.current = key;
+    asignarLimpiezaAutomaticaHoy();
+  }, [session, authLoading, limpiezaHoy, infecciososPerros, infecciososGatos, autoAsignando]);
+
+
+  useEffect(() => {
+    if (!session || authLoading || autoAsignando) return;
+    if (!histPerros || !histGatos) return;
+
+    const key = `${anioHist}-${mesHist}-${histPerros.length}-${histGatos.length}`;
+    if (autoRellenoMesKeyRef.current === key) return;
+    autoRellenoMesKeyRef.current = key;
+    autoRellenarMesVisiblePendientes();
+  }, [session, authLoading, anioHist, mesHist, histPerros, histGatos, autoAsignando]);
+
+  const cloracionMesActual = useMemo(() => {
+    const hoy = new Date();
+    const mes = hoy.getMonth() + 1;
+    const anio = hoy.getFullYear();
+    const map = {};
+    histCloro.forEach((item) => {
+      const partes = String(item.fecha || "").split("/");
+      if (partes.length !== 3) return;
+      const m = Number(partes[1]);
+      const y = Number(partes[2]);
+      if (m === mes && y === anio && !map[item.deposito]) {
+        map[item.deposito] = item;
+      }
+    });
+    return map;
+  }, [histCloro]);
+
+  const pendientesCloracionMes = useMemo(() => {
+    return depositos.filter((d) => !cloracionMesActual[d]).length;
+  }, [cloracionMesActual]);
+
+  function filtrarMes(list) {
+    return list.filter((r) => {
+      const [_, m, y] = normalizeEsDate(r.fecha).split("/");
+      return Number(m) - 1 === mesHist && Number(y) === anioHist;
+    }).sort(ordenarPorFechaTrabajo);
+  }
+  const perrosMes = filtrarMes(histPerros);
+  const gatosMes = filtrarMes(histGatos);
+  const cloroMes = filtrarMes(histCloro);
+
+  function exportarListado(titulo, filas, columnas, periodo) {
+    const body = filas.length
+      ? filas.map((row) => `<tr>${columnas.map((c) => `<td>${escapeHtml(String(row[c.key] ?? ""))}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${columnas.length}">No hay registros.</td></tr>`;
+    abrirVentanaImpresion(titulo, `
+      <h1>${escapeHtml(titulo)}</h1>
+      <p><span class="badge">Modepran</span></p>
+      <p><strong>Periodo:</strong> ${escapeHtml(periodo)}</p>
+      <table><thead><tr>${columnas.map((c) => `<th>${escapeHtml(c.label)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
+    `);
+  }
+
+  function exportarMes(tipo) {
+    const periodo = `${meses[mesHist]} ${anioHist}`;
+    if (tipo === "perros") exportarListado("Histórico limpieza perros", perrosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico limpieza gatos", gatosMes, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico cloración", cloroMes, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+  }
+  function exportarAnio(tipo) {
+    const periodo = `Año ${anioHist}`;
+    const perrosAnio = histPerros.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist).sort(ordenarPorFechaTrabajo);
+    const gatosAnio = histGatos.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist).sort(ordenarPorFechaTrabajo);
+    const cloroAnio = histCloro.filter((r) => Number(normalizeEsDate(r.fecha).split("/")[2]) === anioHist).sort(ordenarPorFechaTrabajo);
+    if (tipo === "perros") exportarListado("Histórico anual limpieza perros", perrosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "gatos") exportarListado("Histórico anual limpieza gatos", gatosAnio, [{key:"grupo",label:"Grupo"},{key:"zona",label:"Zona"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+    if (tipo === "cloro") exportarListado("Histórico anual cloración", cloroAnio, [{key:"deposito",label:"Depósito"},{key:"trabajador",label:"Trabajador"},{key:"fecha",label:"Día"},{key:"hora",label:"Hora"}], periodo);
+  }
+
+  const topCardStyle = { padding: isMobile ? "16px 18px" : "16px 20px", borderRadius: 18, border: 0, fontWeight: 800, fontSize: 16, cursor: "pointer" };
+  const zonasPerrosOrdenadas = [...zonasPerros["Zona principal"], ...zonasPerros["Campo Nuevo"]];
+  const zonasGatosOrdenadas = [...zonasGatos["Cuarentenas"], ...zonasGatos["Jaulones"]];
+  const selectorEsZonaGatos = zonasGatosOrdenadas.includes(selectorItem);
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: 20 }}>
+        <div style={{ color: "#fff", fontWeight: 800, fontSize: 20 }}>Cargando acceso…</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: 20 }}>
+        <div style={{ width: "100%", maxWidth: 430, background: "#f8f8f8", borderRadius: 28, boxShadow: "0 20px 60px rgba(0,0,0,0.35)", overflow: "hidden" }}>
+          <div style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff", padding: 24, display: "grid", gap: 14 }}>
+            <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+              <img src="/logo.png" alt="Modepran" style={{ width: 74, height: 74, objectFit: "contain", borderRadius: 16, background: "rgba(255,255,255,0.04)", padding: 6 }} />
+              <div>
+                <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.05 }}>Acceso privado</div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.75)" }}>Control sanitario Modepran</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)" }}>
+              Solo usuarios autorizados pueden entrar.
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} style={{ padding: 22, display: "grid", gap: 14 }}>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label style={{ fontWeight: 700, color: "#222" }}>Correo</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="tu@correo.com"
+                autoComplete="email"
+                style={inputStyle}
+                required
+              />
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <label style={{ fontWeight: 700, color: "#222" }}>Contraseña</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                style={inputStyle}
+                required
+              />
+            </div>
+
+            {loginError && (
+              <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 14, padding: "12px 14px", fontWeight: 700, fontSize: 14 }}>
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              style={{
+                padding: "15px 18px",
+                borderRadius: 16,
+                border: 0,
+                background: "#e84d57",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 16,
+                cursor: "pointer",
+                opacity: loginLoading ? 0.8 : 1
+              }}
+            >
+              {loginLoading ? "Entrando..." : "Entrar"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#141414,#1d1d1d,#111)", padding: isMobile ? 12 : 18 }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "grid", gap: isMobile ? 14 : 22 }}>
+        <div style={{ borderRadius: 30, border: "1px solid rgba(255,255,255,0.08)", background: "linear-gradient(90deg,#111,#232323)", boxShadow: "0 24px 60px rgba(0,0,0,0.35)" }}>
+          <div style={{ display: "flex", gap: 16, justifyContent: "space-between", alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap", padding: isMobile ? 16 : 24 }}>
+            <div style={{ display: "flex", gap: isMobile ? 12 : 18, alignItems: isMobile ? "flex-start" : "center", flexWrap: "wrap" }}>
+              <div style={{ borderRadius: 22, background: "rgba(0,0,0,0.28)", padding: 10 }}>
+                <img src="/logo.png" alt="Protectora Modepran" style={{ width: isMobile ? 76 : 110, height: isMobile ? 76 : 110, objectFit: "contain", display: "block", borderRadius: 18 }} />
+              </div>
+              <div style={{ flex: 1, minWidth: isMobile ? "100%" : "auto" }}>
+                <h1 style={{ margin: 0, color: "#fff", fontSize: isMobile ? 32 : 44, lineHeight: 1.02, fontWeight: 800, letterSpacing: "-0.03em" }}>Control sanitario Modepran</h1>
+                <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.74)", fontSize: isMobile ? 15 : 18, fontWeight: 500 }}>Limpieza diaria, cloración e histórico</p>
+                <p style={{ margin: "8px 0 0", color: "rgba(255,255,255,0.64)", fontSize: 13, fontWeight: 700 }}>{estadoConexion}</p>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ borderRadius: 18, background: "#e84d57", color: "#fff", padding: isMobile ? "10px 14px" : "12px 18px", fontWeight: 800 }}>Registro interno</div>
+              <button
+                onClick={handleLogout}
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "#111",
+                  color: "#fff",
+                  padding: isMobile ? "10px 14px" : "12px 18px",
+                  fontWeight: 800,
+                  cursor: "pointer"
+                }}
+              >
+                Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(5,1fr)", gap: 8, background: "#171717", padding: 8, borderRadius: 18, border: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 8, zIndex: 5 }}>
+          {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"],["historico","📊 Histórico"],["trabajadores","👥 Trabajadores"]].map(([value, label]) => (
+            <button key={value} onClick={() => setTab(value)} style={{ padding: isMobile ? "15px 8px" : "14px 16px", borderRadius: 14, border: 0, cursor: "pointer", background: tab === value ? "#e84d57" : "transparent", color: "#fff", fontWeight: 800, fontSize: isMobile ? 14 : 16 }}>{label}</button>
+          ))}
+        </div>
+
+        {!["historico","trabajadores"].includes(tab) && (
+          <div style={{ borderRadius: 20, background: totalPendientes === 0 ? "#064e3b" : "#3a2d00", color: "#fff", padding: isMobile ? "14px 16px" : "14px 18px", fontWeight: 800, fontSize: isMobile ? 15 : 16 }}>
+            {totalPendientes === 0 ? "Limpieza al día. No quedan tareas pendientes." : `Pendientes actuales de limpieza: ${totalPendientes}`}
+          </div>
+        )}
+
+
+        {tab === "perros" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 10 : 12, display: "grid", gap: 6 }}>
+                <h3 style={{ margin: 0, color: "#e84d57", fontSize: isMobile ? 16 : 18, lineHeight: 1.1, fontWeight: 800 }}>Protocolo de limpieza perros</h3>
+                <textarea
+                  value={protocoloPerros}
+                  onChange={(e) => setProtocoloPerros(e.target.value)}
+                  placeholder="Escribe aquí el protocolo o descripción de limpieza de perros e infecciosos..."
+                  style={protocoloTextareaStyle}
+                />
+              </div>
+            </Card>
+            <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
+                <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos perros?</p></div>
+                <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososPerros} onChange={(e) => setInfecciososPerros(e.target.checked)} />
+              </div>
+            </Card>
+            {Object.entries(zonasPerros).map(([grupo, lista]) => (
+              <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
+                <SectionTitle>{grupo}</SectionTitle>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {lista.map((zona) => <RegistroRow key={zona} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} trabajadoresLista={trabajadores} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
+                </div>
+              </div></Card>
+            ))}
+
+            {infecciososPerros && (
+              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
+                <div style={{ padding: isMobile ? 16 : 24 }}>
+                  <SectionTitle>Infecciosos Perros</SectionTitle>
+                  <RegistroRow
+                    title="Limpieza infecciosos perros"
+                    registro={limpiezaHoy["Infecciosos Perros"]}
+                    onSelect={(v) => registrar("Infecciosos Perros", v)}
+                    trabajadoresLista={trabajadores}
+                    disabled={!!limpiezaHoy["Infecciosos Perros"]}
+                    bloqueado={!!limpiezaHoy["Infecciosos Perros"]}
+                  />
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {tab === "gatos" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 10 : 12, display: "grid", gap: 6 }}>
+                <h3 style={{ margin: 0, color: "#e84d57", fontSize: isMobile ? 16 : 18, lineHeight: 1.1, fontWeight: 800 }}>Protocolo de limpieza gatos</h3>
+                <textarea
+                  value={protocoloGatos}
+                  onChange={(e) => setProtocoloGatos(e.target.value)}
+                  placeholder="Escribe aquí el protocolo o descripción de limpieza de gatos e infecciosos..."
+                  style={protocoloTextareaStyle}
+                />
+              </div>
+            </Card>
+
+            <Card style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff" }}>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 12 }}>
+                <div>
+                  <p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Marcado rápido</p>
+                  <p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>Aplicar el mismo trabajador a todas las zonas de gatos</p>
+                  <p style={{ margin: "8px 0 0", opacity: .82, fontSize: 14 }}>Marca de una vez todas las zonas normales de gatos. No toca infecciosos.</p>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#fff" }}>Trabajador prefijado</label>
+                  <select
+                    value={trabajadorMasivoGatos}
+                    onChange={(e) => setTrabajadorMasivoGatos(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Seleccionar trabajador</option>
+                    {trabajadores.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#fff" }}>O escribir trabajador manualmente</label>
+                  <input
+                    type="text"
+                    value={trabajadorMasivoGatosManual}
+                    onChange={(e) => setTrabajadorMasivoGatosManual(e.target.value)}
+                    placeholder="Escribe aquí el nombre si no está en la lista"
+                    style={inputStyle}
+                  />
+                </div>
+
+                <button
+                  onClick={registrarTodasLasZonasGatos}
+                  disabled={!(trabajadorMasivoGatos || trabajadorMasivoGatosManual.trim())}
+                  style={{
+                    padding: "16px 18px",
+                    borderRadius: 18,
+                    border: 0,
+                    background: "#e84d57",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 16,
+                    cursor: "pointer",
+                    opacity: (trabajadorMasivoGatos || trabajadorMasivoGatosManual.trim()) ? 1 : 0.7
+                  }}
+                >
+                  Marcar todas las zonas de gatos
+                </button>
+              </div>
+            </Card>
+            <Card style={{ background: "linear-gradient(90deg,#e84d57,#ff6b73)", color: "#fff" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: isMobile ? 16 : 18, gap: 12 }}>
+                <div><p style={{ margin: 0, opacity: .82, fontSize: 14, fontWeight: 700 }}>Control variable</p><p style={{ margin: "6px 0 0", fontWeight: 800, fontSize: isMobile ? 20 : 22 }}>¿Hay infecciosos gatos?</p></div>
+                <input style={{ width: 24, height: 24 }} type="checkbox" checked={infecciososGatos} onChange={(e) => setInfecciososGatos(e.target.checked)} />
+              </div>
+            </Card>
+            {Object.entries(zonasGatos).map(([grupo, lista]) => (
+              <Card key={grupo}><div style={{ padding: isMobile ? 16 : 24 }}>
+                <SectionTitle>{grupo}</SectionTitle>
+                <div style={{ display: "grid", gap: 14 }}>
+                  {lista.map((zona) => <RegistroRow key={zona} title={zona} registro={limpiezaHoy[zona]} onSelect={(v) => registrar(zona, v)} trabajadoresLista={trabajadores} disabled={!!limpiezaHoy[zona]} bloqueado={!!limpiezaHoy[zona]} />)}
+                </div>
+              </div></Card>
+            ))}
+
+            {infecciososGatos && (
+              <Card style={{ background: "linear-gradient(90deg,#dc2626,#ef4444)", color: "#fff" }}>
+                <div style={{ padding: isMobile ? 16 : 24 }}>
+                  <SectionTitle>Infecciosos Gatos</SectionTitle>
+                  <RegistroRow
+                    title="Limpieza infecciosos gatos"
+                    registro={limpiezaHoy["Infecciosos Gatos"]}
+                    onSelect={(v) => registrar("Infecciosos Gatos", v)}
+                    trabajadoresLista={trabajadores}
+                    disabled={!!limpiezaHoy["Infecciosos Gatos"]}
+                    bloqueado={!!limpiezaHoy["Infecciosos Gatos"]}
+                  />
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {tab === "cloro" && (
+          <div style={{ display: "grid", gap: 14 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 10 : 12, display: "grid", gap: 6 }}>
+                <h3 style={{ margin: 0, color: "#e84d57", fontSize: isMobile ? 16 : 18, lineHeight: 1.1, fontWeight: 800 }}>Protocolo de cloración</h3>
+                <textarea
+                  value={protocoloCloro}
+                  onChange={(e) => setProtocoloCloro(e.target.value)}
+                  placeholder="Escribe aquí el protocolo o descripción de cloración..."
+                  style={protocoloTextareaStyle}
+                />
+              </div>
+            </Card>
+            <div style={{
+              borderRadius: 20,
+              background: pendientesCloracionMes === 0 ? "#064e3b" : "#3a2d00",
+              color: "#fff",
+              padding: isMobile ? "14px 16px" : "14px 18px",
+              fontWeight: 800,
+              fontSize: isMobile ? 15 : 16
+            }}>
+              {pendientesCloracionMes === 0
+                ? "Cloración del mes al día. Todos los depósitos están marcados este mes."
+                : `Pendientes de cloración del mes actual: ${pendientesCloracionMes}`}
+            </div>
+
+            <div style={{ display: "grid", gap: 14, gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(280px,1fr))" }}>
+              {depositos.map((d) => {
+                const registroMes = cloracionMesActual[d];
+                return (
+                  <RegistroRow
+                    key={d}
+                    title={d}
+                    registro={registroMes ? {
+                      trabajador: registroMes.trabajador,
+                      fecha: registroMes.fecha,
+                      hora: registroMes.hora,
+                      retroactivo: !!registroMes.retroactivo
+                    } : null}
+                    onSelect={(v) => registrarCloro(d, v)}
+                    trabajadoresLista={trabajadores}
+                    disabled={!!registroMes}
+                    bloqueado={!!registroMes}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {tab === "trabajadores" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 16 }}>
+                <SectionTitle>Trabajadores</SectionTitle>
+                <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>
+                  Añade o elimina trabajadores y copia el turno de otro compañero. Los cambios solo afectan a nuevas asignaciones; el histórico anterior se conserva.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 2fr auto", gap: 10 }}>
+                  <input value={nuevoTrabajador} onChange={(e) => setNuevoTrabajador(e.target.value)} placeholder="Nombre del nuevo trabajador" style={inputStyle} />
+                  <select value={turnoReferencia} onChange={(e) => setTurnoReferencia(e.target.value)} style={inputStyle}>
+                    <option value="">Sin turno de referencia</option>
+                    {trabajadores.map((t) => <option key={t} value={t}>Mismo turno que {t}</option>)}
+                  </select>
+                  <button onClick={anadirTrabajador} disabled={!nuevoTrabajador.trim()} style={{ ...topCardStyle, background: "#e84d57", color: "#fff", opacity: nuevoTrabajador.trim() ? 1 : .6 }}>Añadir</button>
+                </div>
+              </div>
+            </Card>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              {plantillaTrabajadores.map((t) => (
+                <Card key={t.nombre}>
+                  <div style={{ padding: isMobile ? 14 : 18, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 2fr auto", gap: 10, alignItems: "center" }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 5 }}>{t.nombre}</div>
+                      <div style={{ color: "#555", fontSize: 13, fontWeight: 700 }}>{textoTurno(t.descansos)}</div>
+                    </div>
+                    <div style={{ display: "grid", gap: 7 }}>
+                      <input defaultValue={t.nombre} onBlur={(e) => renombrarTrabajador(t.nombre, e.target.value)} style={{ ...inputStyle, padding: "10px 12px", fontSize: 14 }} />
+                      <select defaultValue="" onChange={(e) => { if (e.target.value) copiarTurno(t.nombre, e.target.value); e.target.value = ""; }} style={{ ...inputStyle, padding: "10px 12px", fontSize: 14 }}>
+                        <option value="">Cambiar turno copiando a…</option>
+                        {trabajadores.filter((n) => n !== t.nombre).map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    <button onClick={() => eliminarTrabajador(t.nombre)} style={{ ...topCardStyle, background: "#111", color: "#fff", padding: "12px 16px" }}>Eliminar</button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "historico" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <Card>
+              <div style={{ padding: isMobile ? 16 : 22, display: "grid", gap: 16 }}>
+                <SectionTitle>Histórico mensual completo</SectionTitle>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2,1fr)", gap: 12 }}>
+                  <MonthYearPicker mes={mesHist} setMes={setMesHist} anio={anioHist} setAnio={setAnioHist} />
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 10 }}>
+                    <button onClick={() => exportarMes(historicoTab)} style={{ ...topCardStyle, background: "#e84d57", color: "#fff" }}>Exportar mes</button>
+                    <button onClick={() => exportarAnio(historicoTab)} style={{ ...topCardStyle, background: "#111", color: "#fff" }}>Exportar año</button>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, background: "#efefef", padding: 8, borderRadius: 18 }}>
+                  {[["perros","🐶 Perros"],["gatos","🐱 Gatos"],["cloro","💧 Cloración"]].map(([value, label]) => (
+                    <button key={value} onClick={() => setHistoricoTab(value)} style={{ padding: "14px 10px", borderRadius: 14, border: 0, cursor: "pointer", background: historicoTab === value ? "#e84d57" : "transparent", color: historicoTab === value ? "#fff" : "#111", fontWeight: 800 }}>{label}</button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 14, color: "#555", fontWeight: 700 }}>
+                  Aquí ves el mes entero de golpe. Pulsa una celda pendiente para completar ese día. Todo lo completado sale en verde.
+                </div>
+              </div>
+            </Card>
+
+            {historicoTab === "perros" && (
+              <MesGrid
+                titulo={`Perros · ${meses[mesHist]} ${anioHist}`}
+                items={zonasPerrosOrdenadas}
+                registros={perrosMes}
+                anio={anioHist}
+                mes={mesHist}
+                isMobile={isMobile}
+                onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
+              />
+            )}
+
+            {historicoTab === "gatos" && (
+              <MesGrid
+                titulo={`Gatos · ${meses[mesHist]} ${anioHist}`}
+                items={zonasGatosOrdenadas}
+                registros={gatosMes}
+                anio={anioHist}
+                mes={mesHist}
+                isMobile={isMobile}
+                onAdd={(item, fecha) => abrirSelector(item, fecha, "limpieza")}
+              />
+            )}
+
+            {historicoTab === "cloro" && (
+              <MesGrid
+                titulo={`Cloración · ${meses[mesHist]} ${anioHist}`}
+                items={depositos}
+                registros={cloroMes}
+                anio={anioHist}
+                mes={mesHist}
+                isMobile={isMobile}
+                onAdd={(item, fecha) => abrirSelector(item, fecha, "cloro")}
+              />
+            )}
+          </div>
+        )}
+        {selectorAbierto && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              display: "grid",
+              placeItems: "center",
+              padding: 20,
+              zIndex: 1000
+            }}
+            onClick={() => setSelectorAbierto(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                background: "#fff",
+                borderRadius: 24,
+                boxShadow: "0 24px 60px rgba(0,0,0,0.35)",
+                overflow: "hidden"
+              }}
+            >
+              <div style={{ background: "linear-gradient(90deg,#111,#232323)", color: "#fff", padding: 20 }}>
+                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.05 }}>Completar registro</div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.78)", marginTop: 6 }}>
+                  {selectorItem} · {selectorFecha}
+                </div>
+              </div>
+
+              <div style={{ padding: 18, display: "grid", gap: 14 }}>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#222" }}>Trabajador prefijado</label>
+                  <select
+                    value={selectorTrabajador}
+                    onChange={(e) => setSelectorTrabajador(e.target.value)}
+                    style={inputStyle}
+                  >
+                    <option value="">Seleccionar trabajador</option>
+                    {trabajadores.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  <label style={{ fontWeight: 700, color: "#222" }}>O escribir trabajador manualmente</label>
+                  <input
+                    type="text"
+                    value={selectorTrabajadorManual}
+                    onChange={(e) => setSelectorTrabajadorManual(e.target.value)}
+                    placeholder="Escribe aquí el nombre si no está en la lista"
+                    style={inputStyle}
+                  />
+                </div>
+
+                {selectorEsZonaGatos && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 16, background: "#f8fafc", padding: "12px 14px", fontWeight: 700, color: "#111827", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={selectorMarcarTodasGatos}
+                      onChange={(e) => setSelectorMarcarTodasGatos(e.target.checked)}
+                      style={{ width: 18, height: 18 }}
+                    />
+                    Marcar todas las zonas de gatos pendientes de ese día
+                  </label>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <button
+                    onClick={() => setSelectorAbierto(false)}
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: 16,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                      color: "#111",
+                      fontWeight: 800,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmarSelector}
+                    disabled={!(selectorTrabajador || selectorTrabajadorManual.trim())}
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: 16,
+                      border: 0,
+                      background: "#e84d57",
+                      color: "#fff",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      opacity: (selectorTrabajador || selectorTrabajadorManual.trim()) ? 1 : 0.7
+                    }}
+                  >
+                    Guardar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
