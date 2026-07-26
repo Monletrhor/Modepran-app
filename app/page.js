@@ -1215,6 +1215,27 @@ export default function Page() {
                   Los cambios afectan a las nuevas asignaciones. Los registros históricos ya guardados mantienen el nombre original.
                 </div>
 
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr auto", gap: 10, alignItems: "end", padding: 14, background: "#fff7f7", borderRadius: 18, border: "1px solid #fecaca" }}>
+                  <div style={{ display: "grid", gap: 7 }}>
+                    <label style={{ fontWeight: 800, color: "#b91c1c" }}>Dar de baja trabajador</label>
+                    <select id="modepran-baja-trabajador" defaultValue="" style={inputStyle}>
+                      <option value="">Seleccionar trabajador</option>
+                      {nombresTrabajadores.map((nombre, index) => <option key={`${index}-${nombre}`} value={index}>{nombre}</option>)}
+                    </select>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const select = document.getElementById("modepran-baja-trabajador");
+                      if (!select || select.value === "") return;
+                      eliminarTrabajador(Number(select.value));
+                      select.value = "";
+                    }}
+                    style={{ padding: "15px 18px", borderRadius: 16, border: 0, background: "#b91c1c", color: "#fff", fontWeight: 800, cursor: "pointer" }}
+                  >
+                    Quitar de la plantilla
+                  </button>
+                </div>
+
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.4fr 1fr auto", gap: 10, alignItems: "end", padding: 14, background: "#fff", borderRadius: 18, border: "1px solid #e5e7eb" }}>
                   <div style={{ display: "grid", gap: 7 }}>
                     <label style={{ fontWeight: 800 }}>Nuevo trabajador</label>
